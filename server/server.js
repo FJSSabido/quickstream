@@ -176,6 +176,23 @@ wss.on('connection', (ws, req) => {
     ws.role = 'host';
     ws.roomId = roomId;
 
+    // Si ya había espectadores conectados ANTES de que este anfitrión pusiera
+    // contraseña (por ejemplo, si abrieron el enlace justo antes de arrancar la
+    // emisión, cuando la sala todavía no tenía ni contraseña ni dueño), hay que
+    // volver a comprobarlos ahora: si lo que mandaron como contraseña no
+    // coincide con la que se acaba de fijar, se les desconecta — su página lo
+    // detecta solo y les vuelve a pedir la contraseña correcta (ver
+    // showPasswordPrompt en watch.html). Sin esto, alguien podría quedarse
+    // viendo la emisión sin haber acertado nunca la contraseña.
+    if (room.hostKey) {
+      for (const viewerWs of room.viewers.values()) {
+        if (viewerWs.providedKey !== room.hostKey) {
+          send(viewerWs, { type: 'error', message: 'Contraseña incorrecta.' });
+          viewerWs.close();
+        }
+      }
+    }
+
     send(ws, { type: 'host-ready', viewerCount: room.viewers.size });
 
     // Avisar al host de los espectadores que ya estaban esperando
@@ -194,6 +211,9 @@ wss.on('connection', (ws, req) => {
     ws.role = 'viewer';
     ws.roomId = roomId;
     ws.viewerId = viewerId;
+    // Se recuerda qué contraseña mandó, para poder revalidarlo si más tarde
+    // llega (o cambia) el anfitrión con una contraseña distinta (ver arriba).
+    ws.providedKey = key;
 
     send(ws, { type: 'viewer-registered', viewerId, hostOnline: !!room.hostWs });
 
