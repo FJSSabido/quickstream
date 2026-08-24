@@ -27,17 +27,43 @@
   .status.live { background: #1c3a2a; color: #4ade80; }
   .status.live::before { content: "● "; }
   .status.off { background: #3a1c1c; color: #f87171; }
+  /* Móvil (por defecto): vídeo arriba y chat debajo, se llega bajando en la
+     página — .main-area apila en columna igual que antes de tener este div.
+     Escritorio (ver el media query más abajo): vídeo y chat lado a lado, el
+     chat como columna fija a la derecha, sin que la página entera haga scroll. */
+  .main-area {
+    display: flex; flex-direction: column; flex: 1; min-height: 0;
+  }
   .video-area {
     flex: none; height: 56vh; min-height: 260px; position: relative;
     display: flex; align-items: center; justify-content: center;
     background: #000; overflow: hidden;
   }
+  /* En pantalla completa, el navegador ya centra/maximiza el elemento por su
+     cuenta — esto es solo un refuerzo para que ocupe TODO el hueco disponible
+     en cualquier navegador. */
+  .video-area:fullscreen, .video-area:-webkit-full-screen {
+    width: 100vw; height: 100vh;
+  }
   /* Chat compartido: lo ve todo el mundo (el anfitrión y cada espectador), como el
-     chat de un directo normal. Queda debajo del vídeo — en el navegador basta con
-     bajar para verlo y escribir, sin taparse con los controles del vídeo. */
+     chat de un directo normal. En móvil queda debajo del vídeo (se llega bajando
+     en la página); en escritorio pasa a ser una columna fija a la derecha (ver
+     el media query de más abajo). */
   .chat-panel {
     flex: 1; min-height: 280px; display: flex; flex-direction: column;
     border-top: 1px solid #1c2028; background: #0e1016;
+  }
+  /* A partir de aquí consideramos que hay sitio de sobra para poner el chat al
+     lado del vídeo en vez de debajo — pensado para PC/escritorio. */
+  @media (min-width: 900px) {
+    html, body { height: 100%; }
+    .wrap { height: 100%; }
+    .main-area { flex-direction: row; overflow: hidden; }
+    .video-area { flex: 1; height: auto; min-height: 0; }
+    .chat-panel {
+      flex: none; width: 340px; min-height: 0; height: 100%;
+      border-top: none; border-left: 1px solid #1c2028;
+    }
   }
   .chat-header {
     padding: 10px 16px; font-size: 12px; font-weight: 600; color: #9aa2b1;
@@ -68,6 +94,8 @@
   }
   .chat-name-input { font-size: 12px; padding: 7px 12px; }
   .chat-name-input:focus, .chat-text-input:focus { outline: none; border-color: #4a6bff; }
+  .chat-text-input:disabled { opacity: 0.55; cursor: not-allowed; }
+  .chat-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
   .chat-input-row { display: flex; gap: 8px; }
   .chat-text-input { flex: 1; }
   .chat-send-btn {
@@ -89,6 +117,7 @@
   .rotate-btn:active { background: rgba(20,22,28,0.9); }
   #rotateCcwBtn { left: 14px; }
   #rotateBtn { left: 66px; }
+  #fullscreenBtn { left: 118px; font-size: 17px; }
   .volume-control {
     position: absolute; bottom: 14px; right: 14px; z-index: 6;
     display: flex; align-items: center; gap: 6px;
@@ -152,33 +181,36 @@
     <h1>MiConstelación CamStream</h1>
     <div id="status" class="status">Conectando…</div>
   </header>
-  <div class="video-area">
-    <video id="remoteVideo" playsinline autoplay muted></video>
-    <button id="rotateCcwBtn" class="rotate-btn" type="button" title="Girar 90° a la izquierda" aria-label="Girar a la izquierda">⟲</button>
-    <button id="rotateBtn" class="rotate-btn" type="button" title="Girar 90° a la derecha" aria-label="Girar a la derecha">⟳</button>
-    <div id="volumeControl" class="volume-control">
-      <button id="muteBtn" type="button" title="Silenciar / activar sonido" aria-label="Silenciar o activar sonido">🔊</button>
-      <input id="volumeSlider" type="range" min="0" max="100" value="100" aria-label="Volumen" />
-    </div>
-    <div id="noVideoBadge" class="signal-badge" title="Quien emite tiene el vídeo apagado" aria-label="Sin señal de vídeo">🎥</div>
-    <div id="noAudioBadge" class="signal-badge" title="Quien emite tiene el micrófono apagado" aria-label="Sin señal de audio">🎙️</div>
-    <div id="overlay" class="overlay">
-      <div class="spinner"></div>
-      <p>Conectando con la señalización…</p>
-    </div>
-  </div>
-  <div class="chat-panel">
-    <div class="chat-header">💬 Chat en directo</div>
-    <div id="chatMessages" class="chat-messages">
-      <div class="chat-empty" id="chatEmpty">Todavía no hay mensajes — escribe el primero.</div>
-    </div>
-    <form id="chatForm" class="chat-form">
-      <input id="chatNameInput" class="chat-name-input" type="text" maxlength="40" placeholder="Tu nombre (opcional)" autocomplete="off" />
-      <div class="chat-input-row">
-        <input id="chatTextInput" class="chat-text-input" type="text" maxlength="500" placeholder="Escribe un mensaje…" autocomplete="off" />
-        <button type="submit" class="chat-send-btn" aria-label="Enviar mensaje" title="Enviar">➤</button>
+  <div class="main-area">
+    <div class="video-area">
+      <video id="remoteVideo" playsinline autoplay muted></video>
+      <button id="rotateCcwBtn" class="rotate-btn" type="button" title="Girar 90° a la izquierda" aria-label="Girar a la izquierda">⟲</button>
+      <button id="rotateBtn" class="rotate-btn" type="button" title="Girar 90° a la derecha" aria-label="Girar a la derecha">⟳</button>
+      <button id="fullscreenBtn" class="rotate-btn" type="button" title="Pantalla completa" aria-label="Pantalla completa">⛶</button>
+      <div id="volumeControl" class="volume-control">
+        <button id="muteBtn" type="button" title="Silenciar / activar sonido" aria-label="Silenciar o activar sonido">🔊</button>
+        <input id="volumeSlider" type="range" min="0" max="100" value="100" aria-label="Volumen" />
       </div>
-    </form>
+      <div id="noVideoBadge" class="signal-badge" title="Quien emite tiene el vídeo apagado" aria-label="Sin señal de vídeo">🎥</div>
+      <div id="noAudioBadge" class="signal-badge" title="Quien emite tiene el micrófono apagado" aria-label="Sin señal de audio">🎙️</div>
+      <div id="overlay" class="overlay">
+        <div class="spinner"></div>
+        <p>Conectando con la señalización…</p>
+      </div>
+    </div>
+    <div class="chat-panel">
+      <div class="chat-header">💬 Chat en directo</div>
+      <div id="chatMessages" class="chat-messages">
+        <div class="chat-empty" id="chatEmpty">Todavía no hay mensajes — escribe el primero.</div>
+      </div>
+      <form id="chatForm" class="chat-form">
+        <input id="chatNameInput" class="chat-name-input" type="text" maxlength="40" placeholder="Tu nombre (opcional)" autocomplete="off" />
+        <div class="chat-input-row">
+          <input id="chatTextInput" class="chat-text-input" type="text" maxlength="500" placeholder="Escribe un mensaje…" autocomplete="off" />
+          <button id="chatSendBtn" type="submit" class="chat-send-btn" aria-label="Enviar mensaje" title="Enviar">➤</button>
+        </div>
+      </form>
+    </div>
   </div>
   <footer>Conexión directa por WebRTC (peer-to-peer) · el vídeo no pasa por este servidor · el chat sí pasa por el servidor de señalización</footer>
 </div>
@@ -192,6 +224,7 @@
   const videoEl = document.getElementById('remoteVideo');
   const rotateBtn = document.getElementById('rotateBtn');
   const rotateCcwBtn = document.getElementById('rotateCcwBtn');
+  const fullscreenBtn = document.getElementById('fullscreenBtn');
   const videoAreaEl = document.querySelector('.video-area');
   const muteBtn = document.getElementById('muteBtn');
   const volumeSlider = document.getElementById('volumeSlider');
@@ -202,7 +235,12 @@
   const chatForm = document.getElementById('chatForm');
   const chatTextInput = document.getElementById('chatTextInput');
   const chatNameInput = document.getElementById('chatNameInput');
+  const chatSendBtn = document.getElementById('chatSendBtn');
   let myViewerId = null;
+  // El chat solo tiene sentido mientras hay emisión de verdad al otro lado — si
+  // el anfitrión ha terminado o todavía no ha empezado, no tiene a quién
+  // llegarle el mensaje. Empieza deshabilitado hasta saber que SÍ hay emisión.
+  let hostOnline = false;
 
   // --- Chat compartido (anfitrión + todos los espectadores ven lo mismo) -----
   // Recordamos el nombre entre visitas si el navegador lo permite (localStorage
@@ -225,10 +263,22 @@
     chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
   }
 
+  function updateChatAvailability() {
+    chatTextInput.disabled = !hostOnline;
+    chatSendBtn.disabled = !hostOnline;
+    chatTextInput.placeholder = hostOnline
+      ? 'Escribe un mensaje…'
+      : 'El chat vuelve a estar disponible en cuanto haya emisión en directo';
+  }
+  updateChatAvailability(); // estado inicial: deshabilitado hasta confirmar que hay emisión
+
   chatForm.addEventListener('submit', (ev) => {
     ev.preventDefault();
     const text = chatTextInput.value.trim();
-    if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+    // Doble comprobación aparte de deshabilitar el campo: por si el mensaje ya
+    // estaba escrito justo cuando la emisión terminó (el "disabled" no vacía lo
+    // que ya había en el campo).
+    if (!text || !hostOnline || !ws || ws.readyState !== WebSocket.OPEN) return;
     const name = chatNameInput.value.trim();
     try { localStorage.setItem('camstream_chat_name', name); } catch (e) { /* ignorar */ }
     ws.send(JSON.stringify({ type: 'chat', text, name }));
@@ -345,6 +395,36 @@
   videoEl.addEventListener('loadedmetadata', layoutVideo);
   window.addEventListener('resize', layoutVideo);
   window.addEventListener('orientationchange', layoutVideo);
+
+  // --- Pantalla completa (maximizar/minimizar) --------------------------------
+  // Maximiza el área de vídeo (con sus controles encima, incluido el chat NO
+  // entra en pantalla completa a propósito: en pantalla completa se prioriza
+  // ver el vídeo lo más grande posible). Con prefijo "webkit" para Safari, que
+  // todavía no soporta la API sin prefijo en todas sus versiones.
+  function isFullscreen() {
+    return !!(document.fullscreenElement || document.webkitFullscreenElement);
+  }
+
+  function updateFullscreenIcon() {
+    const fs = isFullscreen();
+    fullscreenBtn.textContent = fs ? '✕' : '⛶';
+    const label = fs ? 'Salir de pantalla completa' : 'Pantalla completa';
+    fullscreenBtn.title = label;
+    fullscreenBtn.setAttribute('aria-label', label);
+  }
+
+  fullscreenBtn.addEventListener('click', () => {
+    if (!isFullscreen()) {
+      const req = videoAreaEl.requestFullscreen || videoAreaEl.webkitRequestFullscreen;
+      if (req) req.call(videoAreaEl);
+    } else {
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      if (exit) exit.call(document);
+    }
+  });
+
+  document.addEventListener('fullscreenchange', () => { updateFullscreenIcon(); layoutVideo(); });
+  document.addEventListener('webkitfullscreenchange', () => { updateFullscreenIcon(); layoutVideo(); });
 
   function setStatus(text, cls) {
     statusEl.textContent = text;
@@ -463,6 +543,8 @@
 
       if (msg.type === 'viewer-registered') {
         myViewerId = msg.viewerId || myViewerId;
+        hostOnline = !!msg.hostOnline;
+        updateChatAvailability();
         if (!msg.hostOnline) {
           setStatus('Esperando…');
           showOverlay('<div class="spinner"></div><p>La emisión todavía no ha empezado. Esta página se conectará automáticamente en cuanto arranque.</p>');
@@ -472,6 +554,8 @@
 
       if (msg.type === 'host-offline') {
         gotStream = false;
+        hostOnline = false;
+        updateChatAvailability();
         setStatus('Sin emisión', 'off');
         showOverlay('<p>La emisión ha terminado o se ha desconectado.</p>');
         resetSignalBadges();
@@ -494,6 +578,11 @@
       }
 
       if (msg.type === 'offer') {
+        // Recibir una oferta es prueba de que el anfitrión SÍ está emitiendo ahora
+        // mismo (por si 'viewer-registered' llegó con hostOnline=false porque nos
+        // conectamos justo antes de que empezara) — reactiva el chat aquí también.
+        hostOnline = true;
+        updateChatAvailability();
         setupPeerConnection();
         await pc.setRemoteDescription({ type: 'offer', sdp: msg.sdp });
         const answer = await pc.createAnswer();

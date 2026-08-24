@@ -242,12 +242,17 @@ wss.on('connection', (ws, req) => {
         // Chat compartido: el mensaje de un espectador lo ve el anfitrión Y
         // también el resto de espectadores (como el chat de un directo normal),
         // no solo el anfitrión. Se sanea texto/nombre por si acaso.
+        // Sin anfitrión conectado no hay emisión de verdad — el chat no debe
+        // seguir "vivo" después de que termine (watch.html ya deshabilita el
+        // campo en ese momento, esto es el mismo control por si acaso, del lado
+        // del servidor).
+        if (!r.hostWs) return;
         const text = String(msg.text || '').slice(0, 500).trim();
         if (!text) return;
         msg.text = text;
         msg.name = String(msg.name || '').slice(0, 40).trim() || 'Invitado';
         msg.ts = Date.now();
-        if (r.hostWs) send(r.hostWs, msg);
+        send(r.hostWs, msg);
         for (const viewer of r.viewers.values()) send(viewer, msg);
         return;
       }

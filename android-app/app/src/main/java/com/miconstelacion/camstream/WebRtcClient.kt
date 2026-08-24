@@ -121,7 +121,23 @@ class WebRtcClient(
             .setAudioDeviceModule(adm)
             .createPeerConnectionFactory()
 
-        audioSource = factory.createAudioSource(MediaConstraints())
+        // Se piden EXPLÍCITAMENTE las mejoras de audio de WebRTC en vez de confiar en
+        // los valores por defecto — cancelación de eco, control automático de
+        // ganancia (volumen estable, sin picos ni susurros inaudibles), supresión de
+        // ruido y filtro de graves (quita el "runrún" de fondo grave). Las claves con
+        // "2" al final piden la versión más nueva de cada algoritmo cuando el
+        // dispositivo la soporta (AEC3/AGC2/NS2), que suele sonar más limpia que la
+        // clásica.
+        val audioConstraints = MediaConstraints().apply {
+            mandatory.add(MediaConstraints.KeyValuePair("googEchoCancellation", "true"))
+            mandatory.add(MediaConstraints.KeyValuePair("googEchoCancellation2", "true"))
+            mandatory.add(MediaConstraints.KeyValuePair("googAutoGainControl", "true"))
+            mandatory.add(MediaConstraints.KeyValuePair("googAutoGainControl2", "true"))
+            mandatory.add(MediaConstraints.KeyValuePair("googNoiseSuppression", "true"))
+            mandatory.add(MediaConstraints.KeyValuePair("googNoiseSuppression2", "true"))
+            mandatory.add(MediaConstraints.KeyValuePair("googHighpassFilter", "true"))
+        }
+        audioSource = factory.createAudioSource(audioConstraints)
         localAudioTrack = factory.createAudioTrack("mic0", audioSource)
     }
 
@@ -307,6 +323,11 @@ class WebRtcClient(
 
         pc.createOffer(object : SimpleSdpObserver() {
             override fun onCreateSuccess(desc: SessionDescription) {
+                // Se sube la calidad de Opus AQUÍ, en la propia SDP, antes de fijarla —
+                // es el único sitio donde de verdad se controla el bitrate de audio (ver
+                // preferHighQualityOpus). Se manda la SDP ya retocada tanto en local como
+                // al espectador, para que ambos lados estén de acuerdo en el mismo perfil.
+                val tunedDesc = SessionDescription(desc.type, preferHighQualityOpus(desc.description))
                 pc.setLocalDescription(object : SimpleSdpObserver() {
                     override fun onSetSuccess() {
                         // Red de seguridad: en cuanto la SDP local queda fijada, WebRTC
@@ -315,10 +336,46 @@ class WebRtcClient(
                         // (justo tras addTrack) no tuviera efecto todavía.
                         applyMaxBitrate(sender, bitrateForResolution(currentCaptureWidth, currentCaptureHeight))
                     }
-                }, desc)
-                listener.onLocalOffer(viewerId, desc.description)
+                }, tunedDesc)
+                listener.onLocalOffer(viewerId, tunedDesc.description)
             }
         }, MediaConstraints())
+    }
+
+    /**
+     * Sube la calidad del audio (códec Opus) muy por encima de lo que WebRTC usa
+     * por defecto (pensado de fábrica para ahorrar red, no para sonar lo mejor
+     * posible) — se prioriza que se oiga nítido y sin cortes, aunque cueste algo
+     * más de red que el mínimo:
+     *  - maxaveragebitrate=128000: techo de bitrate mucho más alto que el ~32kbps
+     *    por defecto (de sobra para que la voz suene nítida, sin ahogarse).
+     *  - useinbandfec=1: el propio audio lleva "de propina" una copia reducida del
+     *    paquete anterior, así que si la red pierde un paquete suelto se puede
+     *    reconstruir sin pedirlo de nuevo — evita los cortes/robotización típicos
+     *    de una red que va regular.
+     *  - usedtx=0: NUNCA deja de mandar audio real en los silencios. El "ahorro"
+     *    de DTX (dejar de emitir y mandar solo "ruido de confort") a veces se nota
+     *    como un pequeño corte o un timbre raro al retomar la voz — mejor evitarlo
+     *    si lo que se busca es sonar lo más limpio posible.
+     *  - stereo=0: la voz no necesita dos canales; todo el bitrate disponible se
+     *    dedica a nitidez en vez de a un estéreo que aquí no aporta nada.
+     * Busca el "payload type" que le ha tocado a Opus en esta SDP en concreto (no
+     * es siempre el mismo número) y le añade o sustituye su línea `a=fmtp`.
+     */
+    private fun preferHighQualityOpus(sdp: String): String {
+        val opusPt = Regex("a=rtpmap:(\\d+) opus/48000").find(sdp)?.groupValues?.get(1) ?: return sdp
+        val fmtpParams = "minptime=10;useinbandfec=1;stereo=0;maxaveragebitrate=128000;usedtx=0"
+        val fmtpRegex = Regex("a=fmtp:$opusPt .*")
+        return if (fmtpRegex.containsMatchIn(sdp)) {
+            sdp.replace(fmtpRegex) { "a=fmtp:$opusPt $fmtpParams" }
+        } else {
+            // Poco habitual que falte la línea fmtp, pero por si acaso se añade justo
+            // después del rtpmap de Opus en vez de dejarlo sin retocar.
+            sdp.replace(
+                "a=rtpmap:$opusPt opus/48000",
+                "a=rtpmap:$opusPt opus/48000\r\na=fmtp:$opusPt $fmtpParams"
+            )
+        }
     }
 
     /**

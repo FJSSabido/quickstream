@@ -141,6 +141,19 @@ en emisiones largas puede notarse más calentamiento y más consumo de batería 
 prefieres priorizar autonomía/temperatura sobre nitidez máxima, se puede volver a bajar el
 techo de resolución (`MAX_CAPTURE_WIDTH`/`MAX_CAPTURE_HEIGHT` en `WebRtcClient.kt`).
 
+### Calidad de audio
+
+El micrófono se manda con la calidad y la limpieza como prioridad, no como algo secundario
+al vídeo: se piden explícitamente las mejoras de audio de WebRTC (cancelación de eco,
+control automático de ganancia, supresión de ruido y filtro de graves, con la versión más
+nueva de cada algoritmo cuando el móvil la soporta) y se sube el techo de bitrate del códec
+Opus muy por encima de su valor por defecto (pensado de fábrica para ahorrar red, no para
+sonar lo mejor posible), además de activar la recuperación de paquetes perdidos
+(`useinbandfec`) y desactivar el "ahorro en los silencios" (`usedtx`), que a veces se nota
+como un pequeño corte al retomar la voz. El resultado: voz nítida y sin ruido de fondo, con
+menos cortes/robotización si la red va regular — a cambio de algo más de bitrate dedicado al
+audio que antes, que en la práctica es una cantidad pequeña comparada con la del vídeo.
+
 ### Vista para el espectador
 
 Quien ve la transmisión puede girar la imagen con los botones ⟲ (izquierda) y ⟳
