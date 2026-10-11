@@ -1,7 +1,7 @@
 {
-  "name": "miconstelacion-camstream-server",
+  "name": "quickstream-server",
   "version": "1.0.0",
-  "description": "Servidor de señalización WebRTC para MiConstelación CamStream (estilo VDO.Ninja casero)",
+  "description": "Servidor de señalización WebRTC para QuickStream (estilo VDO.Ninja casero)",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {

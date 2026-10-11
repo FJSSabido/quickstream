@@ -1,4 +1,4 @@
-// Servidor de señalización WebRTC para MiConstelación CamStream.
+// Servidor de señalización WebRTC para QuickStream.
 //
 // Qué hace:
 //  - Sirve una página web "visor" (public/watch.html) en /watch/:room
@@ -299,5 +299,5 @@ wss.on('connection', (ws, req) => {
 });
 
 httpServer.listen(PORT, () => {
-  console.log(`MiConstelación CamStream escuchando en el puerto ${PORT}`);
+  console.log(`QuickStream escuchando en el puerto ${PORT}`);
 });
