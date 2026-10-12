@@ -2,6 +2,8 @@ package com.quickstream.app
 
 import android.content.Context
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -66,6 +68,23 @@ object BroadcastEngine {
     // sigue hablando de LA MISMA emisión o si ya se paró/arrancó otra mientras
     // tanto — evita que una respuesta tardía pise un estado más nuevo.
     private var startGeneration = 0
+
+    // --- Reconexión automática de la señalización ---------------------------
+    // Si el WebSocket con el servidor se corta en plena emisión (microcorte de red,
+    // el proxy lo cierra...), NO se para la emisión: el vídeo sigue llegando a los
+    // espectadores por su conexión directa. Solo se reconecta la señalización, con
+    // el token que dio el servidor, para retomar la sala exactamente donde estaba.
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var sessionServerUrl = ""
+    private var sessionRoom = ""
+    private var sessionPassword = ""
+    private var hostToken: String? = null
+    // true en cuanto el servidor ha aceptado esta emisión al menos una vez: a
+    // partir de ahí, un corte se reintenta; antes (fallo al conectar de primeras)
+    // se informa del error y se para, como siempre.
+    private var everLive = false
+    private var reconnectAttempt = 0
+    private var reconnectPending = false
 
     fun start(
         context: Context,
@@ -148,28 +167,59 @@ object BroadcastEngine {
             return
         }
 
+        sessionServerUrl = serverUrl
+        sessionRoom = room
+        sessionPassword = password
+        hostToken = null
+        everLive = false
+        reconnectAttempt = 0
+        reconnectPending = false
+        connectSignaling(resumeToken = null)
+    }
+
+    /**
+     * Abre (o vuelve a abrir, tras un corte) la conexión con el servidor de
+     * señalización. Con [resumeToken] se pide retomar la sala tal cual estaba.
+     */
+    private fun connectSignaling(resumeToken: String?) {
         // "thisClient" nos permite, dentro de los callbacks (que llegan más tarde, de forma
         // asíncrona), comprobar que seguimos hablando de ESTA sesión de señalización y no de
         // una anterior ya cerrada — evita que un mensaje tardío de una conexión vieja toque
         // por error el estado de una emisión nueva que ya se haya iniciado mientras tanto.
         lateinit var thisClient: SignalingClient
-        thisClient = SignalingClient(serverUrl, room, password, object : SignalingListener {
-            override fun onHostReady(viewerCount: Int) {
+        thisClient = SignalingClient(sessionServerUrl, sessionRoom, sessionPassword, resumeToken, object : SignalingListener {
+            override fun onHostReady(viewerCount: Int, token: String?, resumed: Boolean, viewers: List<String>) {
                 if (signalingClient !== thisClient) return
+                hostToken = token
+                everLive = true
+                reconnectAttempt = 0
+                val client = webRtcClient
+                val count: Int
+                if (resumed && client != null) {
+                    // Sala retomada: cuadramos las conexiones que ya tenemos con la
+                    // lista actual del servidor. Los que siguen, siguen viendo sin
+                    // corte; se cierran los que se fueron durante el corte y se
+                    // conecta a los que entraron mientras tanto.
+                    val existing = client.viewerIds()
+                    existing.filter { it !in viewers }.forEach { client.closeViewer(it) }
+                    viewers.filter { it !in existing }.forEach { connectViewer(it) }
+                    count = viewers.size
+                } else {
+                    // Sala nueva (o la anterior ya caducó en el servidor): se empieza
+                    // de cero. Cada espectador llega después con su "viewer-joined",
+                    // que es quien suma al contador.
+                    client?.closeAllViewers()
+                    count = 0
+                }
                 stateFlow.value = stateFlow.value.copy(
-                    isRunning = true, isLive = true, statusText = "En directo", viewerCount = viewerCount, error = null
+                    isRunning = true, isLive = true, statusText = "En directo", viewerCount = count, error = null
                 )
+                // Por si algo cambió (micro/fuente) mientras estábamos desconectados.
+                if (resumed) broadcastState()
             }
             override fun onViewerJoined(viewerId: String) {
                 if (signalingClient !== thisClient) return
-                webRtcClient?.createPeerConnectionForViewer(viewerId)
-                // Al espectador que se acaba de conectar (o que ya estaba esperando)
-                // hay que decirle el estado ACTUAL de vídeo/audio directamente a él —
-                // si más adelante cambia, ya lo cubre broadcastState() avisando a todos.
-                val s = stateFlow.value
-                signalingClient?.sendState(
-                    hasVideo = s.activeSource != VideoSource.NONE, hasAudio = s.micEnabled, viewerId = viewerId
-                )
+                connectViewer(viewerId)
                 stateFlow.value = stateFlow.value.copy(viewerCount = stateFlow.value.viewerCount + 1)
             }
             override fun onViewerLeft(viewerId: String) {
@@ -185,16 +235,21 @@ object BroadcastEngine {
                 if (signalingClient !== thisClient) return
                 webRtcClient?.handleRemoteCandidate(viewerId, candidate)
             }
-            override fun onSignalingError(message: String) {
+            override fun onSignalingError(message: String, fatal: Boolean) {
                 if (signalingClient !== thisClient) return
-                // Sin conexión de señalización no hay forma de que esto llegue a ningún
-                // espectador: cortamos también la captura de cámara/micrófono en vez de
-                // dejarla encendida indefinidamente sin ningún sitio al que emitir.
-                stopInternal(message)
+                if (fatal || !everLive) {
+                    // Error del propio servidor (sala ocupada...) o no se llegó a
+                    // conectar nunca: sin señalización no hay forma de que esto llegue
+                    // a ningún espectador, así que se corta también la captura en vez
+                    // de dejarla encendida indefinidamente sin ningún sitio al que emitir.
+                    stopInternal(message)
+                } else {
+                    scheduleReconnect()
+                }
             }
             override fun onSignalingClosed() {
                 if (signalingClient !== thisClient) return
-                stopInternal("Desconectado")
+                if (everLive) scheduleReconnect() else stopInternal("Desconectado")
             }
             override fun onChat(viewerId: String, name: String, text: String, ts: Long) {
                 if (signalingClient !== thisClient) return
@@ -203,6 +258,41 @@ object BroadcastEngine {
         })
         signalingClient = thisClient
         thisClient.connect()
+    }
+
+    /** Crea la conexión WebRTC con un espectador y le dice el estado actual de vídeo/audio. */
+    private fun connectViewer(viewerId: String) {
+        webRtcClient?.createPeerConnectionForViewer(viewerId)
+        // Al espectador que se acaba de conectar (o que ya estaba esperando)
+        // hay que decirle el estado ACTUAL de vídeo/audio directamente a él —
+        // si más adelante cambia, ya lo cubre broadcastState() avisando a todos.
+        val s = stateFlow.value
+        signalingClient?.sendState(
+            hasVideo = s.activeSource != VideoSource.NONE, hasAudio = s.micEnabled, viewerId = viewerId
+        )
+    }
+
+    /**
+     * La señalización se ha cortado en plena emisión: se reintenta con esperas
+     * crecientes (1, 2, 4, 8 s y luego cada 8 s) mientras el usuario no pulse
+     * "Detener". Cámara, micrófono y las conexiones de vídeo ya abiertas con los
+     * espectadores siguen funcionando mientras tanto.
+     */
+    private fun scheduleReconnect() {
+        if (reconnectPending || !stateFlow.value.isRunning) return
+        reconnectPending = true
+        signalingClient?.disconnect()
+        signalingClient = null
+        stateFlow.value = stateFlow.value.copy(statusText = "Reconectando con el servidor…")
+        val delayMs = (1000L shl minOf(reconnectAttempt, 3))
+        reconnectAttempt++
+        val generation = startGeneration
+        mainHandler.postDelayed({
+            reconnectPending = false
+            if (generation != startGeneration || !stateFlow.value.isRunning) return@postDelayed
+            Log.i(TAG, "Reconectando señalización (intento $reconnectAttempt)")
+            connectSignaling(resumeToken = hostToken)
+        }, delayMs)
     }
 
     /**
@@ -305,7 +395,11 @@ object BroadcastEngine {
             // que adivinarlo solo por el texto del mensaje.
             Log.w(TAG, "stopInternal con error: $errorMessage", Exception("stack trace informativo"))
         }
-        signalingClient?.disconnect()
+        mainHandler.removeCallbacksAndMessages(null)
+        reconnectPending = false
+        everLive = false
+        hostToken = null
+        signalingClient?.disconnect(bye = true)
         signalingClient = null
         webRtcClient?.release()
         webRtcClient = null

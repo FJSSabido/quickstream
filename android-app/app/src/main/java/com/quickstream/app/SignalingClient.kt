@@ -13,12 +13,21 @@ import java.net.URLEncoder
 data class IceCandidateData(val sdpMid: String?, val sdpMLineIndex: Int, val sdp: String)
 
 interface SignalingListener {
-    fun onHostReady(viewerCount: Int)
+    /**
+     * El servidor acepta a este móvil como anfitrión de la sala.
+     * [token]: secreto para poder RETOMAR la sala si la conexión se corta.
+     * [resumed]: true si es una reconexión que ha retomado la sala tal cual estaba
+     * (los espectadores conservan su vídeo); [viewers] es entonces la lista de
+     * espectadores que hay AHORA, para cuadrarla con las conexiones existentes.
+     */
+    fun onHostReady(viewerCount: Int, token: String?, resumed: Boolean, viewers: List<String>)
     fun onViewerJoined(viewerId: String)
     fun onViewerLeft(viewerId: String)
     fun onAnswer(viewerId: String, sdp: String)
     fun onRemoteCandidate(viewerId: String, candidate: IceCandidateData)
-    fun onSignalingError(message: String)
+    /** [fatal]: error del propio servidor (sala ocupada, etc.) — no tiene sentido
+     *  reintentar. Si es false, es un fallo de red y el cierre llega a continuación. */
+    fun onSignalingError(message: String, fatal: Boolean)
     fun onSignalingClosed()
     /** Mensaje de chat de un espectador (nunca del propio anfitrión: sus mensajes
      *  los añade la app localmente en cuanto los envía, no hace falta esperar a
@@ -35,6 +44,7 @@ class SignalingClient(
     serverUrl: String,
     room: String,
     password: String,
+    resumeToken: String?,
     private val listener: SignalingListener
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -45,7 +55,8 @@ class SignalingClient(
             .removeSuffix("/")
             .replaceFirst(Regex("^https://"), "wss://")
             .replaceFirst(Regex("^http://"), "ws://")
-        val uri = URI("$wsBase/ws?room=${enc(room)}&role=host&key=${enc(password)}")
+        val resumeParam = if (resumeToken.isNullOrEmpty()) "" else "&resume=${enc(resumeToken)}"
+        val uri = URI("$wsBase/ws?room=${enc(room)}&role=host&key=${enc(password)}$resumeParam")
 
         client = object : WebSocketClient(uri) {
             override fun onOpen(handshakedata: ServerHandshake?) {
@@ -61,9 +72,15 @@ class SignalingClient(
             }
 
             override fun onError(ex: Exception?) {
-                mainHandler.post { listener.onSignalingError(ex?.message ?: "Error de conexión con el servidor") }
+                mainHandler.post { listener.onSignalingError(ex?.message ?: "Error de conexión con el servidor", false) }
             }
         }
+        // Latido: cada 20 s la librería manda un "ping" al servidor y, si no recibe
+        // respuesta, da la conexión por muerta y la cierra (lo que dispara la
+        // reconexión automática en BroadcastEngine). Así el WebSocket nunca pasa
+        // minutos en silencio — que es lo que hacía que los proxies lo cortaran — y
+        // un corte real se detecta en segundos en vez de quedarse colgado.
+        client.connectionLostTimeout = 20
     }
 
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
@@ -72,11 +89,17 @@ class SignalingClient(
         try {
             client.connect()
         } catch (e: Exception) {
-            listener.onSignalingError(e.message ?: "No se pudo conectar")
+            listener.onSignalingError(e.message ?: "No se pudo conectar", false)
         }
     }
 
-    fun disconnect() {
+    /**
+     * Cierra la conexión. Con [bye] = true avisa antes al servidor de que es una
+     * parada INTENCIONADA (el usuario pulsó "Detener"), para que dé la emisión por
+     * terminada en el acto en vez de esperar a una posible reconexión.
+     */
+    fun disconnect(bye: Boolean = false) {
+        if (bye) send(JSONObject().put("type", "bye"))
         try { client.close() } catch (e: Exception) { /* ignorar */ }
     }
 
@@ -85,7 +108,16 @@ class SignalingClient(
         val type = json.optString("type")
         mainHandler.post {
             when (type) {
-                "host-ready" -> listener.onHostReady(json.optInt("viewerCount", 0))
+                "host-ready" -> {
+                    val arr = json.optJSONArray("viewers")
+                    val viewers = if (arr == null) emptyList() else List(arr.length()) { arr.optString(it) }
+                    listener.onHostReady(
+                        json.optInt("viewerCount", 0),
+                        json.optString("token").ifEmpty { null },
+                        json.optBoolean("resumed", false),
+                        viewers
+                    )
+                }
                 "viewer-joined" -> listener.onViewerJoined(json.optString("viewerId"))
                 "viewer-left" -> listener.onViewerLeft(json.optString("viewerId"))
                 "answer" -> listener.onAnswer(json.optString("viewerId"), json.optString("sdp"))
@@ -100,7 +132,7 @@ class SignalingClient(
                         )
                     )
                 }
-                "error" -> listener.onSignalingError(json.optString("message", "Error del servidor"))
+                "error" -> listener.onSignalingError(json.optString("message", "Error del servidor"), true)
                 "chat" -> listener.onChat(
                     json.optString("viewerId"),
                     json.optString("name", "Invitado"),

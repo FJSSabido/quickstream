@@ -5,10 +5,13 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -51,9 +54,12 @@ class BroadcastService : Service() {
     private var wasRunning = false
     private var lastSource: VideoSource? = null
     private var initializedState = false
+    private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
 
     override fun onCreate() {
         super.onCreate()
+        acquireLocks()
         serviceScope.launch {
             BroadcastEngine.stateFlow.collect { state ->
                 if (!initializedState) {
@@ -154,8 +160,46 @@ class BroadcastService : Service() {
             VideoSource.BACK_CAMERA
         }
 
+    /**
+     * Con la pantalla apagada, Android (y sobre todo capas como ColorOS) tiende a
+     * "dormir" la CPU y el WiFi para ahorrar batería — y eso corta la emisión al
+     * rato aunque la app siga en primer plano. Mientras dure este servicio (es
+     * decir, solo mientras se emite) se mantienen despiertos los dos; se sueltan
+     * en cuanto la emisión termina (ver onDestroy).
+     */
+    @Suppress("DEPRECATION")
+    private fun acquireLocks() {
+        try {
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "QuickStream:broadcast").apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        } catch (e: Exception) { /* sin wake lock seguimos igual que antes */ }
+        try {
+            val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+            } else {
+                WifiManager.WIFI_MODE_FULL_HIGH_PERF
+            }
+            wifiLock = wm.createWifiLock(mode, "QuickStream:broadcast").apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        } catch (e: Exception) { /* sin wifi lock seguimos igual que antes */ }
+    }
+
+    private fun releaseLocks() {
+        try { wakeLock?.takeIf { it.isHeld }?.release() } catch (e: Exception) { /* ignorar */ }
+        try { wifiLock?.takeIf { it.isHeld }?.release() } catch (e: Exception) { /* ignorar */ }
+        wakeLock = null
+        wifiLock = null
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        releaseLocks()
         serviceScope.cancel()
         BroadcastEngine.stop()
     }

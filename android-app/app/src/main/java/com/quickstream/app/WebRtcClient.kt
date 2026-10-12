@@ -490,6 +490,14 @@ class WebRtcClient(
         peerConnections[viewerId]?.addIceCandidate(IceCandidate(c.sdpMid, c.sdpMLineIndex, c.sdp))
     }
 
+    /** Espectadores con conexión WebRTC abierta ahora mismo. */
+    fun viewerIds(): Set<String> = peerConnections.keys.toSet()
+
+    /** Cierra todas las conexiones con espectadores, sin soltar cámara/micrófono. */
+    fun closeAllViewers() {
+        viewerIds().forEach { closeViewer(it) }
+    }
+
     fun closeViewer(viewerId: String) {
         mainVideoSenders.remove(viewerId)
         peerConnections.remove(viewerId)?.close()

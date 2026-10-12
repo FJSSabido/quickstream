@@ -126,8 +126,35 @@ const httpServer = http.createServer((req, res) => {
 
 const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
 
-// rooms: Map<roomId, { hostWs, hostKey: string|null, viewers: Map<viewerId, ws> }>
+// rooms: Map<roomId, { hostWs, hostKey: string|null, hostToken: string|null,
+//                      hostGraceTimer, viewers: Map<viewerId, ws> }>
 const rooms = new Map();
+
+// --- Latido (heartbeat) -------------------------------------------------------
+// Mientras se emite, por este WebSocket apenas pasa nada: el vídeo/audio va
+// directo entre el móvil y cada espectador. Un WebSocket "en silencio" durante
+// minutos es justo lo que los proxies intermedios (el de Render, el del operador
+// móvil, el router...) cortan por inactividad — y eso era lo que hacía que la
+// emisión se cayera sola cada cierto tiempo. Cada 25 s se manda un "ping" a cada
+// conexión (el navegador y la app contestan solos con un "pong"); así nunca está
+// en silencio, y si una conexión no contesta a tiempo se da por muerta y se
+// cierra, en vez de quedarse "abierta" de mentira.
+const HEARTBEAT_MS = 25000;
+const heartbeat = setInterval(() => {
+  for (const ws of wss.clients) {
+    if (ws.isAlive === false) { ws.terminate(); continue; }
+    ws.isAlive = false;
+    try { ws.ping(); } catch { /* ignorar */ }
+  }
+}, HEARTBEAT_MS);
+wss.on('close', () => clearInterval(heartbeat));
+
+// Si el WebSocket del móvil que emite se corta (un microcorte de red, cambio de
+// wifi a datos...), NO damos la emisión por terminada en el acto: el vídeo sigue
+// llegando a los espectadores por su conexión directa, así que se le da este
+// margen a la app para reconectarse y retomar la sala donde estaba, sin que
+// nadie note nada. Solo si no vuelve en este tiempo se avisa de que terminó.
+const HOST_GRACE_MS = 30000;
 
 function send(ws, obj) {
   if (ws && ws.readyState === ws.OPEN) {
@@ -138,7 +165,7 @@ function send(ws, obj) {
 function getOrCreateRoom(roomId) {
   let room = rooms.get(roomId);
   if (!room) {
-    room = { hostWs: null, hostKey: null, viewers: new Map() };
+    room = { hostWs: null, hostKey: null, hostToken: null, hostGraceTimer: null, viewers: new Map() };
     rooms.set(roomId, room);
   }
   return room;
@@ -146,7 +173,7 @@ function getOrCreateRoom(roomId) {
 
 function cleanupEmptyRoom(roomId) {
   const room = rooms.get(roomId);
-  if (room && !room.hostWs && room.viewers.size === 0) {
+  if (room && !room.hostWs && !room.hostGraceTimer && room.viewers.size === 0) {
     rooms.delete(roomId);
   }
 }
@@ -156,6 +183,13 @@ wss.on('connection', (ws, req) => {
   const roomId = (url.searchParams.get('room') || '').trim();
   const role = url.searchParams.get('role') === 'host' ? 'host' : 'viewer';
   const key = url.searchParams.get('key') || '';
+  // Solo lo manda la app al RECONECTARSE tras un corte: es el token secreto que
+  // el servidor le dio en su "host-ready" anterior, y demuestra que es el mismo
+  // móvil que ya estaba emitiendo en esta sala (y no otro intentando colarse).
+  const resumeToken = url.searchParams.get('resume') || '';
+
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
 
   if (!roomId) {
     send(ws, { type: 'error', message: 'Falta el identificador de sala.' });
@@ -166,13 +200,38 @@ wss.on('connection', (ws, req) => {
   const room = getOrCreateRoom(roomId);
 
   if (role === 'host') {
-    if (room.hostWs && room.hostWs.readyState === room.hostWs.OPEN) {
+    const isResume = !!resumeToken && resumeToken === room.hostToken;
+    if (isResume) {
+      // El mismo móvil vuelve tras un corte: se retoma la sala tal cual estaba
+      // (misma contraseña, mismos espectadores, sus conexiones de vídeo intactas).
+      clearTimeout(room.hostGraceTimer);
+      room.hostGraceTimer = null;
+      const old = room.hostWs;
+      room.hostWs = ws; // ANTES de cerrar la vieja, para que su 'close' no cuente como "se fue"
+      if (old && old !== ws) { try { old.terminate(); } catch { /* ignorar */ } }
+      ws.role = 'host';
+      ws.roomId = roomId;
+      send(ws, {
+        type: 'host-ready',
+        resumed: true,
+        token: room.hostToken,
+        viewerCount: room.viewers.size,
+        viewers: [...room.viewers.keys()],
+      });
+      // Sin 'viewer-joined' uno a uno: la app compara la lista 'viewers' con las
+      // conexiones que ya tiene, crea las que falten (quien entró durante el corte)
+      // y cierra las que sobren (quien se fue durante el corte).
+      return attachHandlers();
+    }
+
+    if ((room.hostWs && room.hostWs.readyState === room.hostWs.OPEN) || room.hostGraceTimer) {
       send(ws, { type: 'error', message: 'Esta sala ya tiene una emisión activa desde otro dispositivo.' });
       ws.close();
       return;
     }
     room.hostWs = ws;
     room.hostKey = key || null;
+    room.hostToken = crypto.randomBytes(16).toString('hex');
     ws.role = 'host';
     ws.roomId = roomId;
 
@@ -193,7 +252,13 @@ wss.on('connection', (ws, req) => {
       }
     }
 
-    send(ws, { type: 'host-ready', viewerCount: room.viewers.size });
+    send(ws, {
+      type: 'host-ready',
+      resumed: false,
+      token: room.hostToken,
+      viewerCount: room.viewers.size,
+      viewers: [...room.viewers.keys()],
+    });
 
     // Avisar al host de los espectadores que ya estaban esperando
     for (const viewerId of room.viewers.keys()) {
@@ -215,13 +280,16 @@ wss.on('connection', (ws, req) => {
     // llega (o cambia) el anfitrión con una contraseña distinta (ver arriba).
     ws.providedKey = key;
 
-    send(ws, { type: 'viewer-registered', viewerId, hostOnline: !!room.hostWs });
+    send(ws, { type: 'viewer-registered', viewerId, hostOnline: !!room.hostWs || !!room.hostGraceTimer });
 
     if (room.hostWs) {
       send(room.hostWs, { type: 'viewer-joined', viewerId });
     }
   }
 
+  attachHandlers();
+
+  function attachHandlers() {
   ws.on('message', (raw) => {
     let msg;
     try {
@@ -229,11 +297,21 @@ wss.on('connection', (ws, req) => {
     } catch {
       return;
     }
+    // Latido a nivel de aplicación que mandan el navegador y la app (además de
+    // los ping/pong del propio WebSocket): solo sirve para que la conexión
+    // nunca parezca inactiva. No se reenvía a nadie.
+    if (msg.type === 'ping') { ws.isAlive = true; return; }
 
     const r = rooms.get(ws.roomId);
     if (!r) return;
 
     if (ws.role === 'host') {
+      if (msg.type === 'bye') {
+        // El anfitrión ha pulsado "Detener" a propósito: aquí no hay que esperar
+        // a ninguna reconexión, la emisión termina en el acto (ver 'close').
+        ws.byeSent = true;
+        return;
+      }
       if ((msg.type === 'state' || msg.type === 'chat') && !msg.viewerId) {
         // A diferencia de offer/answer/candidate (dirigidos a un viewer concreto
         // con msg.viewerId), estos van a TODOS los espectadores conectados a la
@@ -283,19 +361,39 @@ wss.on('connection', (ws, req) => {
   ws.on('close', () => {
     const r = rooms.get(ws.roomId);
     if (!r) return;
-    if (ws.role === 'host' && r.hostWs === ws) {
+    if (ws.role === 'host' && r.hostWs === ws && ws.byeSent) {
+      // Parada intencionada: se avisa a todos ya mismo, sin margen de reconexión.
       r.hostWs = null;
       r.hostKey = null;
-      // Avisar a todos los espectadores de que la emisión se cortó
+      r.hostToken = null;
       for (const viewer of r.viewers.values()) {
         send(viewer, { type: 'host-offline' });
       }
+    } else if (ws.role === 'host' && r.hostWs === ws) {
+      r.hostWs = null;
+      // No se da por terminada todavía (ver HOST_GRACE_MS): se espera a que la
+      // app se reconecte. Si no vuelve a tiempo, entonces sí se avisa a todos.
+      const roomId = ws.roomId;
+      clearTimeout(r.hostGraceTimer);
+      r.hostGraceTimer = setTimeout(() => {
+        const rr = rooms.get(roomId);
+        if (!rr) return;
+        rr.hostGraceTimer = null;
+        if (rr.hostWs) return; // ya volvió
+        rr.hostKey = null;
+        rr.hostToken = null;
+        for (const viewer of rr.viewers.values()) {
+          send(viewer, { type: 'host-offline' });
+        }
+        cleanupEmptyRoom(roomId);
+      }, HOST_GRACE_MS);
     } else if (ws.role === 'viewer') {
       r.viewers.delete(ws.viewerId);
       if (r.hostWs) send(r.hostWs, { type: 'viewer-left', viewerId: ws.viewerId });
     }
     cleanupEmptyRoom(ws.roomId);
   });
+  }
 });
 
 httpServer.listen(PORT, () => {

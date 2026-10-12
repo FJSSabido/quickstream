@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
 <title>Viendo en directo · QuickStream</title>
 <style>
   :root { color-scheme: dark; }
@@ -27,9 +27,9 @@
   .status.live { background: #1c3a2a; color: #4ade80; }
   .status.live::before { content: "● "; }
   .status.off { background: #3a1c1c; color: #f87171; }
-  /* Móvil (por defecto): vídeo arriba y chat debajo, se llega bajando en la
-     página — .main-area apila en columna igual que antes de tener este div.
-     Escritorio (ver el media query más abajo): vídeo y chat lado a lado, el
+  /* Móvil: el vídeo ocupa toda la pantalla y el chat flota encima (ver el
+     media query de max-width al final de estos estilos).
+     Escritorio (ver el media query de min-width): vídeo y chat lado a lado, el
      chat como columna fija a la derecha, sin que la página entera haga scroll. */
   .main-area {
     display: flex; flex-direction: column; flex: 1; min-height: 0;
@@ -42,13 +42,16 @@
   /* En pantalla completa, el navegador ya centra/maximiza el elemento por su
      cuenta — esto es solo un refuerzo para que ocupe TODO el hueco disponible
      en cualquier navegador. */
-  .video-area:fullscreen, .video-area:-webkit-full-screen {
-    width: 100vw; height: 100vh;
+  .video-area:fullscreen, .video-area:-webkit-full-screen,
+  .main-area:fullscreen, .main-area:-webkit-full-screen {
+    width: 100vw; height: 100vh; background: #000;
   }
+  /* Botón para plegar/desplegar el chat flotante: solo existe en móvil (ver el
+     media query de max-width más abajo). */
+  .chat-toggle { display: none; }
   /* Chat compartido: lo ve todo el mundo (el anfitrión y cada espectador), como el
-     chat de un directo normal. En móvil queda debajo del vídeo (se llega bajando
-     en la página); en escritorio pasa a ser una columna fija a la derecha (ver
-     el media query de más abajo). */
+     chat de un directo normal. En móvil flota encima del vídeo; en escritorio es
+     una columna fija a la derecha (ver los media queries). */
   .chat-panel {
     flex: 1; min-height: 280px; display: flex; flex-direction: column;
     border-top: 1px solid #1c2028; background: #0e1016;
@@ -173,6 +176,72 @@
   }
   .pw-input:focus { outline: none; border-color: #4a6bff; }
   footer { padding: 10px 16px; font-size: 11px; color: #565d6b; text-align: center; }
+  /* MÓVIL: el chat FLOTA encima del vídeo (como en Instagram/TikTok Live) en vez
+     de quedar debajo, para poder seguirlo sin tener que bajar por la página y
+     perder de vista la emisión. El vídeo ocupa toda la pantalla; los mensajes
+     aparecen abajo sobre un degradado oscuro, con los últimos siempre a la
+     vista, y el chat se puede plegar con su botón 💬 si estorba. Los controles
+     del vídeo (girar, pantalla completa, volumen) suben a la parte de arriba
+     para no chocar con él. */
+  @media (max-width: 899px) {
+    html, body { height: 100%; overflow: hidden; }
+    .wrap { height: 100vh; height: 100dvh; }
+    header { padding: 10px 14px; flex-wrap: nowrap; }
+    footer { display: none; }
+    .main-area { position: relative; }
+    .video-area { flex: 1; height: auto; min-height: 0; }
+    .rotate-btn { top: 12px; bottom: auto; width: 40px; height: 40px; font-size: 18px; }
+    #rotateCcwBtn { left: 12px; }
+    #rotateBtn { left: 58px; }
+    #fullscreenBtn { left: 104px; font-size: 16px; }
+    .volume-control { top: 12px; bottom: auto; right: 12px; padding: 4px 12px 4px 4px; }
+    .volume-control input[type="range"] { width: 64px; }
+    .signal-badge { top: 62px; }
+    #noVideoBadge { left: 12px; }
+    #noAudioBadge { right: 12px; }
+    .chat-panel {
+      position: absolute; left: 0; right: 0; bottom: 0; z-index: 7;
+      flex: none; min-height: 0; border-top: none;
+      background: linear-gradient(to top, rgba(6,8,12,0.88) 0%, rgba(6,8,12,0.55) 65%, rgba(6,8,12,0) 100%);
+      padding-bottom: env(safe-area-inset-bottom);
+      /* El degradado deja pasar los toques al vídeo; solo los mensajes, el
+         formulario y el botón los recogen. */
+      pointer-events: none;
+    }
+    .chat-panel > * { pointer-events: auto; }
+    .chat-header, .chat-empty { display: none; }
+    .chat-messages {
+      flex: none; max-height: 32vh; max-height: 32dvh; padding: 22px 12px 4px; gap: 6px;
+      -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22px);
+      mask-image: linear-gradient(to bottom, transparent 0, #000 22px);
+    }
+    .chat-msg {
+      font-size: 13px; padding: 6px 10px; max-width: 88%;
+      background: rgba(30,36,48,0.78); backdrop-filter: blur(4px);
+    }
+    .chat-msg.mine { background: rgba(35,48,107,0.85); }
+    .chat-msg.host { background: rgba(43,38,7,0.85); }
+    .chat-form { flex-direction: row; gap: 6px; padding: 6px 12px 10px; border-top: none; }
+    .chat-name-input { flex: none; width: 92px; }
+    .chat-input-row { flex: 1; min-width: 0; gap: 6px; }
+    .chat-name-input, .chat-text-input { background: rgba(18,21,28,0.82); min-width: 0; }
+    .chat-toggle {
+      display: flex; align-items: center; justify-content: center;
+      position: absolute; right: 12px; bottom: calc(100% + 6px);
+      width: 40px; height: 40px; border-radius: 50%; border: none;
+      background: rgba(20,22,28,0.7); color: #eef1f5; font-size: 17px; cursor: pointer;
+      backdrop-filter: blur(2px);
+    }
+    .chat-toggle .unread {
+      position: absolute; top: -3px; right: -3px; min-width: 18px; height: 18px;
+      padding: 0 5px; border-radius: 999px; background: #4a6bff; color: #fff;
+      font-size: 11px; font-weight: 700; line-height: 18px; text-align: center;
+    }
+    .chat-toggle .unread:empty { display: none; }
+    .chat-panel.collapsed { background: none; }
+    .chat-panel.collapsed .chat-messages, .chat-panel.collapsed .chat-form { display: none; }
+    .chat-panel.collapsed .chat-toggle { bottom: calc(12px + env(safe-area-inset-bottom)); }
+  }
 </style>
 </head>
 <body>
@@ -198,7 +267,8 @@
         <p>Conectando con la señalización…</p>
       </div>
     </div>
-    <div class="chat-panel">
+    <div class="chat-panel" id="chatPanel">
+      <button id="chatToggleBtn" class="chat-toggle" type="button" title="Ocultar chat" aria-label="Ocultar chat">⌄<span class="unread" id="chatUnread"></span></button>
       <div class="chat-header">💬 Chat en directo</div>
       <div id="chatMessages" class="chat-messages">
         <div class="chat-empty" id="chatEmpty">Todavía no hay mensajes — escribe el primero.</div>
@@ -236,6 +306,11 @@
   const chatTextInput = document.getElementById('chatTextInput');
   const chatNameInput = document.getElementById('chatNameInput');
   const chatSendBtn = document.getElementById('chatSendBtn');
+  const chatPanelEl = document.getElementById('chatPanel');
+  const chatToggleBtn = document.getElementById('chatToggleBtn');
+  const chatUnreadEl = document.getElementById('chatUnread');
+  const mainAreaEl = document.querySelector('.main-area');
+  const mobileQuery = window.matchMedia('(max-width: 899px)');
   let myViewerId = null;
   // El chat solo tiene sentido mientras hay emisión de verdad al otro lado — si
   // el anfitrión ha terminado o todavía no ha empezado, no tiene a quién
@@ -261,7 +336,37 @@
     el.innerHTML = `<span class="chat-name">${escapeHtml(name)}</span>${escapeHtml(msg.text)}`;
     chatMessagesEl.appendChild(el);
     chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+    if (chatPanelEl.classList.contains('collapsed') && !isMine) {
+      unreadCount++;
+      updateChatToggle();
+    }
   }
+
+  // --- Chat flotante plegable (solo móvil) ------------------------------------
+  // Con el chat plegado solo queda el botón 💬, con un contador de mensajes
+  // nuevos sin leer, para poder ver la emisión completamente despejada.
+  let unreadCount = 0;
+  function updateChatToggle() {
+    const collapsed = chatPanelEl.classList.contains('collapsed');
+    chatToggleBtn.firstChild.textContent = collapsed ? '💬' : '⌄';
+    const label = collapsed ? 'Mostrar chat' : 'Ocultar chat';
+    chatToggleBtn.title = label;
+    chatToggleBtn.setAttribute('aria-label', label);
+    chatUnreadEl.textContent = collapsed && unreadCount > 0 ? (unreadCount > 99 ? '99+' : String(unreadCount)) : '';
+  }
+  chatToggleBtn.addEventListener('click', () => {
+    const collapsed = chatPanelEl.classList.toggle('collapsed');
+    if (!collapsed) {
+      unreadCount = 0;
+      chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+    }
+    try { localStorage.setItem('quickstream_chat_collapsed', collapsed ? '1' : '0'); } catch (e) { /* ignorar */ }
+    updateChatToggle();
+  });
+  try {
+    if (localStorage.getItem('quickstream_chat_collapsed') === '1') chatPanelEl.classList.add('collapsed');
+  } catch (e) { /* ignorar */ }
+  updateChatToggle();
 
   function updateChatAvailability() {
     chatTextInput.disabled = !hostOnline;
@@ -415,8 +520,12 @@
 
   fullscreenBtn.addEventListener('click', () => {
     if (!isFullscreen()) {
-      const req = videoAreaEl.requestFullscreen || videoAreaEl.webkitRequestFullscreen;
-      if (req) req.call(videoAreaEl);
+      // En móvil, a pantalla completa va el vídeo JUNTO con el chat flotante
+      // (que se puede plegar con su botón si se quiere el vídeo despejado). En
+      // escritorio, solo el vídeo, como siempre.
+      const target = mobileQuery.matches ? mainAreaEl : videoAreaEl;
+      const req = target.requestFullscreen || target.webkitRequestFullscreen;
+      if (req) req.call(target);
     } else {
       const exit = document.exitFullscreen || document.webkitExitFullscreen;
       if (exit) exit.call(document);
@@ -472,6 +581,15 @@
   let pc = null;
   let ws = null;
   let reconnectTimer = null;
+
+  // Latido: mientras se ve la emisión, por este WebSocket apenas pasa nada (el
+  // vídeo va directo desde el móvil), y los proxies cortan las conexiones que
+  // llevan mucho rato en silencio. Un mensajito cada 25 s lo evita.
+  setInterval(() => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try { ws.send('{"type":"ping"}'); } catch (e) { /* ignorar */ }
+    }
+  }, 25000);
   let gotStream = false;
   // true mientras se espera a que el usuario escriba la contraseña: en ese
   // estado NO reconectamos solos cada 2,5s (nos quedaríamos reintentando con
