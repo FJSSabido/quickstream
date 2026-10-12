@@ -121,18 +121,6 @@
   #rotateCcwBtn { left: 14px; }
   #rotateBtn { left: 66px; }
   #fullscreenBtn { left: 118px; font-size: 17px; }
-  #syncBtn { left: 170px; font-size: 18px; }
-  /* Ajuste de sincronización audio/imagen (ver avOffsetMs en el script). */
-  .sync-panel {
-    position: absolute; left: 14px; bottom: 68px; z-index: 8; width: 260px;
-    display: none; flex-direction: column; gap: 8px;
-    background: rgba(14,16,22,0.92); border: 1px solid #2a2f3a; border-radius: 14px;
-    padding: 12px 14px; font-size: 12.5px; color: #c9cfd9; backdrop-filter: blur(4px);
-  }
-  .sync-panel.show { display: flex; }
-  .sync-panel .sync-title { font-weight: 700; color: #eef1f5; display: flex; justify-content: space-between; }
-  .sync-panel input[type="range"] { width: 100%; accent-color: #7c9cff; }
-  .sync-panel .sync-hint { color: #8a92a1; line-height: 1.4; font-size: 11.5px; }
   .volume-control {
     position: absolute; bottom: 14px; right: 14px; z-index: 6;
     display: flex; align-items: center; gap: 6px;
@@ -206,8 +194,6 @@
     #rotateCcwBtn { left: 12px; }
     #rotateBtn { left: 58px; }
     #fullscreenBtn { left: 104px; font-size: 16px; }
-    #syncBtn { left: 150px; font-size: 16px; }
-    .sync-panel { top: 60px; bottom: auto; left: 12px; }
     .volume-control { top: 12px; bottom: auto; right: 12px; padding: 4px 12px 4px 4px; }
     .volume-control input[type="range"] { width: 64px; }
     .signal-badge { top: 62px; }
@@ -270,12 +256,6 @@
       <button id="rotateCcwBtn" class="rotate-btn" type="button" title="Girar 90° a la izquierda" aria-label="Girar a la izquierda">⟲</button>
       <button id="rotateBtn" class="rotate-btn" type="button" title="Girar 90° a la derecha" aria-label="Girar a la derecha">⟳</button>
       <button id="fullscreenBtn" class="rotate-btn" type="button" title="Pantalla completa" aria-label="Pantalla completa">⛶</button>
-      <button id="syncBtn" class="rotate-btn" type="button" title="Sincronizar audio e imagen" aria-label="Sincronizar audio e imagen">⏱</button>
-      <div id="syncPanel" class="sync-panel" role="dialog" aria-label="Sincronizar audio e imagen">
-        <div class="sync-title"><span>Retrasar imagen</span><span id="syncValue">0 ms</span></div>
-        <input id="syncSlider" type="range" min="0" max="600" step="10" value="0" aria-label="Retraso de la imagen en milisegundos" />
-        <div class="sync-hint">Si el sonido llega después que la imagen, súbelo hasta que los labios y la voz coincidan. Si el sonido se adelanta, bájalo.</div>
-      </div>
       <div id="volumeControl" class="volume-control">
         <button id="muteBtn" type="button" title="Silenciar / activar sonido" aria-label="Silenciar o activar sonido">🔊</button>
         <input id="volumeSlider" type="range" min="0" max="100" value="100" aria-label="Volumen" />
@@ -559,45 +539,21 @@
   // automática de WebRTC no lo puede corregir, porque se basa en las marcas de
   // tiempo que pone el móvil, y el sonido ya sale marcado tarde. Por eso aquí se
   // separa el audio de esa sincronización automática (ver fixSyncInOffer) y se
-  // retrasa la IMAGEN a propósito, los milisegundos que haga falta, para que
-  // vuelva a coincidir con la voz. Cada espectador puede afinarlo con el botón ⏱;
-  // se recuerda en este navegador para la próxima vez.
-  const DEFAULT_AV_OFFSET_MS = 150;
-  const syncBtn = document.getElementById('syncBtn');
-  const syncPanel = document.getElementById('syncPanel');
-  const syncSlider = document.getElementById('syncSlider');
-  const syncValue = document.getElementById('syncValue');
-  let avOffsetMs = DEFAULT_AV_OFFSET_MS;
-  try {
-    const saved = localStorage.getItem('quickstream_av_offset');
-    if (saved !== null && !isNaN(Number(saved))) avOffsetMs = Number(saved);
-  } catch (e) { /* ignorar */ }
+  // retrasa la IMAGEN a propósito un valor fijo (AV_OFFSET_MS, comprobado a
+  // mano: con 200 ms la voz coincide con los labios) para que vuelva a coincidir
+  // con el sonido.
+  const AV_OFFSET_MS = 200;
   let videoReceiver = null;
   const canDelayVideo = typeof RTCRtpReceiver !== 'undefined' &&
     ('jitterBufferTarget' in RTCRtpReceiver.prototype || 'playoutDelayHint' in RTCRtpReceiver.prototype);
-  if (!canDelayVideo) syncBtn.style.display = 'none'; // navegador sin soporte (p. ej. Safari)
 
   function applyAvOffset() {
-    syncSlider.value = String(avOffsetMs);
-    syncValue.textContent = avOffsetMs + ' ms';
     if (!videoReceiver) return;
     try {
-      if ('jitterBufferTarget' in videoReceiver) videoReceiver.jitterBufferTarget = avOffsetMs;
-      else videoReceiver.playoutDelayHint = avOffsetMs / 1000;
+      if ('jitterBufferTarget' in videoReceiver) videoReceiver.jitterBufferTarget = AV_OFFSET_MS;
+      else videoReceiver.playoutDelayHint = AV_OFFSET_MS / 1000;
     } catch (e) { /* ignorar */ }
   }
-  syncBtn.addEventListener('click', (ev) => {
-    ev.stopPropagation();
-    syncPanel.classList.toggle('show');
-  });
-  syncPanel.addEventListener('click', (ev) => ev.stopPropagation());
-  document.addEventListener('click', () => syncPanel.classList.remove('show'));
-  syncSlider.addEventListener('input', () => {
-    avOffsetMs = Number(syncSlider.value);
-    try { localStorage.setItem('quickstream_av_offset', String(avOffsetMs)); } catch (e) { /* ignorar */ }
-    applyAvOffset();
-  });
-  applyAvOffset();
 
   // Saca la pista de audio del "grupo de sincronización" de la imagen cambiando
   // su identificador de stream en la oferta (a=msid). Sin esto, WebRTC volvería
