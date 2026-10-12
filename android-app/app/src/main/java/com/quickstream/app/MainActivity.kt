@@ -1,4 +1,4 @@
-package com.miconstelacion.camstream
+package com.quickstream.app
 
 import android.Manifest
 import android.app.Activity
@@ -23,8 +23,12 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.material.button.MaterialButton
-import com.miconstelacion.camstream.databinding.ActivityMainBinding
+import com.quickstream.app.databinding.ActivityMainBinding
 import kotlinx.coroutines.launch
+
+
+// Servidor que se rellena por defecto la primera vez (o si el campo se guardó vacío).
+private const val DEFAULT_SERVER_URL = "https://camstream-9ynp.onrender.com"
 
 class MainActivity : AppCompatActivity() {
 
@@ -83,7 +87,7 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        prefs = getSharedPreferences("camstream_prefs", Context.MODE_PRIVATE)
+        prefs = getSharedPreferences("quickstream_prefs", Context.MODE_PRIVATE)
         restorePrefs()
 
         binding.btnRegenRoom.setOnClickListener {
@@ -205,7 +209,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun restorePrefs() {
-        binding.inputServerUrl.setText(prefs.getString("serverUrl", ""))
+        binding.inputServerUrl.setText(
+            prefs.getString("serverUrl", null)?.takeIf { it.isNotBlank() } ?: DEFAULT_SERVER_URL
+        )
         binding.inputRoomId.setText(prefs.getString("room", randomRoomId()))
         binding.inputPassword.setText(prefs.getString("password", ""))
     }

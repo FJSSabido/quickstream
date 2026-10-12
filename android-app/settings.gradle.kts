@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "CamStream"
+rootProject.name = "QuickStream"
 include(":app")

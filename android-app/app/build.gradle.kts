@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.miconstelacion.camstream"
+    namespace = "com.quickstream.app"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.miconstelacion.camstream"
+        applicationId = "com.quickstream.app"
         minSdk = 26
         targetSdk = 34
         versionCode = 1

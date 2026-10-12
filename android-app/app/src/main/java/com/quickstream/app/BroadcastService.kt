@@ -1,4 +1,4 @@
-package com.miconstelacion.camstream
+package com.quickstream.app
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -91,10 +91,10 @@ class BroadcastService : Service() {
     }
 
     companion object {
-        const val ACTION_START = "com.miconstelacion.camstream.action.START"
-        const val ACTION_STOP = "com.miconstelacion.camstream.action.STOP"
-        const val ACTION_SWITCH_SOURCE = "com.miconstelacion.camstream.action.SWITCH_SOURCE"
-        private const val CHANNEL_ID = "camstream_live"
+        const val ACTION_START = "com.quickstream.app.action.START"
+        const val ACTION_STOP = "com.quickstream.app.action.STOP"
+        const val ACTION_SWITCH_SOURCE = "com.quickstream.app.action.SWITCH_SOURCE"
+        private const val CHANNEL_ID = "quickstream_live"
         private const val NOTIF_ID = 42
 
         const val EXTRA_SERVER_URL = "serverUrl"
@@ -218,7 +218,7 @@ class BroadcastService : Service() {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("CamStream está en directo")
+            .setContentTitle("QuickStream está en directo")
             .setContentText("Toca para volver a la app")
             .setSmallIcon(android.R.drawable.ic_menu_camera)
             .setContentIntent(openPending)

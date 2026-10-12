@@ -1,4 +1,4 @@
-package com.miconstelacion.camstream
+package com.quickstream.app
 
 import android.content.Context
 import android.content.Intent

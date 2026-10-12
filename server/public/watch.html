@@ -245,7 +245,7 @@
   // --- Chat compartido (anfitrión + todos los espectadores ven lo mismo) -----
   // Recordamos el nombre entre visitas si el navegador lo permite (localStorage
   // puede fallar en modo privado o si está bloqueado — no pasa nada si falla).
-  try { chatNameInput.value = localStorage.getItem('camstream_chat_name') || ''; } catch (e) { /* ignorar */ }
+  try { chatNameInput.value = localStorage.getItem('quickstream_chat_name') || ''; } catch (e) { /* ignorar */ }
 
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -280,7 +280,7 @@
     // que ya había en el campo).
     if (!text || !hostOnline || !ws || ws.readyState !== WebSocket.OPEN) return;
     const name = chatNameInput.value.trim();
-    try { localStorage.setItem('camstream_chat_name', name); } catch (e) { /* ignorar */ }
+    try { localStorage.setItem('quickstream_chat_name', name); } catch (e) { /* ignorar */ }
     ws.send(JSON.stringify({ type: 'chat', text, name }));
     chatTextInput.value = '';
   });

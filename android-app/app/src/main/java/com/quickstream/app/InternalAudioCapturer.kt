@@ -1,4 +1,4 @@
-package com.miconstelacion.camstream
+package com.quickstream.app
 
 import android.annotation.SuppressLint
 import android.media.AudioAttributes

@@ -1,4 +1,4 @@
-# CamStream — cámara/pantalla del móvil en una URL (estilo VDO.Ninja casero)
+# QuickStream — cámara/pantalla del móvil en una URL (estilo VDO.Ninja casero)
 
 App de Android que emite tu cámara (trasera o delantera) o la pantalla del móvil por
 WebRTC, con un enlace `https://tu-servidor/watch/sala` que cualquiera puede abrir en un
@@ -33,7 +33,7 @@ funcione fuera de tu propia WiFi (y para que los navegadores acepten el WebRTC).
    - Start command: `npm start`
    - Plan: Free
 4. Cuando termine el despliegue, Render te da una URL como
-   `https://camstream-xxxx.onrender.com`. Esa es la que pones en el campo "URL del
+   `https://quickstream-xxxx.onrender.com`. Esa es la que pones en el campo "URL del
    servidor" de la app.
 
 **Alternativas**: Railway, Fly.io, un VPS propio con Node.js instalado (`node server.js`,

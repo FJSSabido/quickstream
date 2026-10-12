@@ -1,4 +1,4 @@
-package com.miconstelacion.camstream
+package com.quickstream.app
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory

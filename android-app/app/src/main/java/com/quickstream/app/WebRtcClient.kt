@@ -1,4 +1,4 @@
-package com.miconstelacion.camstream
+package com.quickstream.app
 
 import android.content.Context
 import android.content.Intent
@@ -116,7 +116,7 @@ class WebRtcClient(
         // Por defecto, WebRTC captura el micrófono por la ruta "de llamada"
         // (VOICE_COMMUNICATION): pensada para videollamadas, con banda más estrecha y
         // una nivelación automática más agresiva orientada a que la voz se entienda
-        // por teléfono, no a captar el sonido con fidelidad. CamStream no es una
+        // por teléfono, no a captar el sonido con fidelidad. QuickStream no es una
         // llamada — es una emisión en un solo sentido — así que se usa en su lugar la
         // ruta CAMCORDER, la misma que usan las apps de cámara/vídeo: más sensible,
         // con más rango de frecuencias, y sin ese "aplanado" pensado para teléfono.
@@ -128,7 +128,16 @@ class WebRtcClient(
         val adm = JavaAudioDeviceModule.builder(context)
             .setAudioSource(MediaRecorder.AudioSource.CAMCORDER)
             .setUseHardwareAcousticEchoCanceler(false)
-            .setUseHardwareNoiseSuppressor(true)
+            // Supresor de ruido por HARDWARE apagado: el del fabricante está afinado
+            // para llamadas y, sumado al de software de WebRTC (que sigue activo más
+            // abajo, NS2), hacía una doble supresión que deja la voz "enlatada"/bajo
+            // el agua. Con uno solo se sigue quitando el ruido de fondo sin comerse
+            // matices de la voz.
+            .setUseHardwareNoiseSuppressor(false)
+            // Captura a 48 kHz (banda completa, lo máximo que maneja Opus) en vez de
+            // la frecuencia que el móvil proponga por defecto, que en algunos
+            // modelos es más baja y recorta los agudos.
+            .setInputSampleRate(48000)
             .createAudioDeviceModule()
 
         val encoderFactory = DefaultVideoEncoderFactory(eglBase.eglBaseContext, true, true)
@@ -399,12 +408,18 @@ class WebRtcClient(
      *    si lo que se busca es sonar lo más limpio posible.
      *  - stereo=0: la voz no necesita dos canales; todo el bitrate disponible se
      *    dedica a nitidez en vez de a un estéreo que aquí no aporta nada.
+     *  - maxplaybackrate/sprop-maxcapturerate=48000: banda completa (hasta ~20 kHz),
+     *    para que Opus no recorte agudos pasando a "banda ancha" o "súper ancha".
+     * Se aplica tanto a nuestra oferta como a la respuesta del navegador (ver
+     * [handleAnswer]) — es la de la respuesta la que de verdad decide la calidad con
+     * la que el móvil codifica y envía el micrófono.
      * Busca el "payload type" que le ha tocado a Opus en esta SDP en concreto (no
      * es siempre el mismo número) y le añade o sustituye su línea `a=fmtp`.
      */
     private fun preferHighQualityOpus(sdp: String): String {
         val opusPt = Regex("a=rtpmap:(\\d+) opus/48000").find(sdp)?.groupValues?.get(1) ?: return sdp
-        val fmtpParams = "minptime=10;useinbandfec=1;stereo=0;maxaveragebitrate=128000;usedtx=0"
+        val fmtpParams = "minptime=10;useinbandfec=1;stereo=0;maxaveragebitrate=128000;" +
+            "maxplaybackrate=48000;sprop-maxcapturerate=48000;usedtx=0"
         val fmtpRegex = Regex("a=fmtp:$opusPt .*")
         return if (fmtpRegex.containsMatchIn(sdp)) {
             sdp.replace(fmtpRegex) { "a=fmtp:$opusPt $fmtpParams" }
@@ -456,8 +471,18 @@ class WebRtcClient(
     }
 
     fun handleAnswer(viewerId: String, sdp: String) {
+        // IMPORTANTE: en Opus, los parámetros `a=fmtp` de una SDP dicen cómo quiere
+        // RECIBIR audio quien escribe esa SDP. Retocar solo nuestra oferta (como se
+        // hacía antes) le dice al navegador cómo mandarnos audio a NOSOTROS — algo
+        // que aquí no se usa, porque el espectador no emite nada. Lo que controla
+        // cómo CODIFICA el móvil su micrófono es la RESPUESTA del navegador, que por
+        // defecto viene sin `maxaveragebitrate` — así que el audio salía en realidad
+        // a los ~32 kbps de fábrica pese al 128000 de la oferta. Retocando también la
+        // respuesta antes de aplicarla, el codificador del móvil por fin usa el
+        // perfil de alta calidad de [preferHighQualityOpus].
         peerConnections[viewerId]?.setRemoteDescription(
-            SimpleSdpObserver(), SessionDescription(SessionDescription.Type.ANSWER, sdp)
+            SimpleSdpObserver(),
+            SessionDescription(SessionDescription.Type.ANSWER, preferHighQualityOpus(sdp))
         )
     }
 
