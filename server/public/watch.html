@@ -212,6 +212,10 @@
     .volume-control { top: 12px; bottom: auto; right: 12px; padding: 4px 12px 4px 4px; }
     .volume-control input[type="range"] { width: 64px; }
     .signal-badge { top: 62px; }
+    /* A pantalla completa, el contador de espectadores baja por debajo de la
+       fila de botones: arriba del todo, en muchos móviles, está el agujero de la
+       cámara frontal. También respeta la zona segura que indique el móvil. */
+    .fs-viewer-count { top: calc(66px + env(safe-area-inset-top, 0px)); }
     #noVideoBadge { left: 12px; }
     #noAudioBadge { right: 12px; }
     .chat-panel {
