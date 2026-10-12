@@ -25,6 +25,15 @@
     background: #262b35; color: #a9b0bd;
   }
   .status.live { background: #1c3a2a; color: #4ade80; }
+  .header-right { display: flex; align-items: center; gap: 8px; }
+  /* Copia del contador de espectadores DENTRO del vídeo: la cabecera queda fuera
+     de la pantalla completa, así que ahí solo se ve esta (arriba al centro). */
+  .fs-viewer-count {
+    display: none; position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 6;
+    font-size: 12px; padding: 5px 11px; border-radius: 999px; white-space: nowrap;
+    background: rgba(20,22,28,0.7); color: #eef1f5; backdrop-filter: blur(2px);
+  }
+  :fullscreen .fs-viewer-count.known, :-webkit-full-screen .fs-viewer-count.known { display: block; }
   .status.live::before { content: "● "; }
   .status.off { background: #3a1c1c; color: #f87171; }
   /* Móvil: el vídeo ocupa toda la pantalla y el chat flota encima (ver el
@@ -254,11 +263,15 @@
 <div class="wrap">
   <header>
     <h1>QuickStream</h1>
-    <div id="status" class="status">Conectando…</div>
+    <div class="header-right">
+      <div id="viewerCount" class="status" title="Espectadores conectados" style="display:none">👁 0</div>
+      <div id="status" class="status">Conectando…</div>
+    </div>
   </header>
   <div class="main-area">
     <div class="video-area">
       <video id="remoteVideo" playsinline autoplay muted></video>
+      <div id="fsViewerCount" class="fs-viewer-count" title="Espectadores conectados">👁 0</div>
       <button id="rotateCcwBtn" class="rotate-btn" type="button" title="Girar 90° a la izquierda" aria-label="Girar a la izquierda">⟲</button>
       <button id="rotateBtn" class="rotate-btn" type="button" title="Girar 90° a la derecha" aria-label="Girar a la derecha">⟳</button>
       <button id="fullscreenBtn" class="rotate-btn" type="button" title="Pantalla completa" aria-label="Pantalla completa">⛶</button>
@@ -296,6 +309,8 @@
   const roomId = decodeURIComponent(location.pathname.split('/watch/')[1] || '').replace(/\/$/, '');
   let key = new URLSearchParams(location.search).get('key') || '';
   const statusEl = document.getElementById('status');
+  const viewerCountEl = document.getElementById('viewerCount');
+  const fsViewerCountEl = document.getElementById('fsViewerCount');
   const overlayEl = document.getElementById('overlay');
   const videoEl = document.getElementById('remoteVideo');
   const rotateBtn = document.getElementById('rotateBtn');
@@ -721,6 +736,17 @@
         showOverlay('<p>La emisión ha terminado o se ha desconectado.</p>');
         resetSignalBadges();
         if (pc) { pc.close(); pc = null; }
+        return;
+      }
+
+      if (msg.type === 'viewer-count') {
+        const n = Number(msg.count) || 0;
+        viewerCountEl.textContent = '👁 ' + n;
+        viewerCountEl.title = n === 1 ? '1 espectador conectado' : n + ' espectadores conectados';
+        viewerCountEl.style.display = '';
+        fsViewerCountEl.textContent = viewerCountEl.textContent;
+        fsViewerCountEl.title = viewerCountEl.title;
+        fsViewerCountEl.classList.add('known');
         return;
       }
 

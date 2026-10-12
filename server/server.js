@@ -162,6 +162,13 @@ function send(ws, obj) {
   }
 }
 
+// Avisa a todos los espectadores de una sala de cuántos espectadores hay
+// conectados ahora mismo (se muestra en la cabecera de watch.html).
+function broadcastViewerCount(room) {
+  const msg = { type: 'viewer-count', count: room.viewers.size };
+  for (const viewer of room.viewers.values()) send(viewer, msg);
+}
+
 function getOrCreateRoom(roomId) {
   let room = rooms.get(roomId);
   if (!room) {
@@ -281,6 +288,7 @@ wss.on('connection', (ws, req) => {
     ws.providedKey = key;
 
     send(ws, { type: 'viewer-registered', viewerId, hostOnline: !!room.hostWs || !!room.hostGraceTimer });
+    broadcastViewerCount(room);
 
     if (room.hostWs) {
       send(room.hostWs, { type: 'viewer-joined', viewerId });
@@ -390,6 +398,7 @@ wss.on('connection', (ws, req) => {
     } else if (ws.role === 'viewer') {
       r.viewers.delete(ws.viewerId);
       if (r.hostWs) send(r.hostWs, { type: 'viewer-left', viewerId: ws.viewerId });
+      broadcastViewerCount(r);
     }
     cleanupEmptyRoom(ws.roomId);
   });
