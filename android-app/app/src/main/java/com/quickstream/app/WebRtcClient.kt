@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.media.MediaRecorder
 import android.media.projection.MediaProjection
+import android.util.Log
 import org.webrtc.AudioSource
 import org.webrtc.AudioTrack
 import org.webrtc.Camera2Enumerator
@@ -11,11 +12,14 @@ import org.webrtc.DataChannel
 import org.webrtc.DefaultVideoDecoderFactory
 import org.webrtc.DefaultVideoEncoderFactory
 import org.webrtc.EglBase
+import org.webrtc.HardwareVideoEncoderFactory
 import org.webrtc.IceCandidate
 import org.webrtc.MediaConstraints
 import org.webrtc.MediaStream
+import org.webrtc.MediaStreamTrack
 import org.webrtc.PeerConnection
 import org.webrtc.PeerConnectionFactory
+import org.webrtc.RtpCapabilities
 import org.webrtc.RtpParameters
 import org.webrtc.RtpReceiver
 import org.webrtc.RtpSender
@@ -57,6 +61,7 @@ class WebRtcClient(
     }
 
     companion object {
+        private const val TAG = "WebRtcClient"
         // Techo de RESOLUCIÓN de captura. Antes era 4K (2160p): en teoría más nítido,
         // pero en la práctica casi ninguna red de subida (ni wifi de casa ni datos
         // móviles) sostiene de forma fiable los ~20 Mbps que hacen falta para que 4K
@@ -76,6 +81,7 @@ class WebRtcClient(
     }
 
     private lateinit var eglBase: EglBase
+    private var hardwareCodecNames: Set<String> = emptySet()
     private lateinit var factory: PeerConnectionFactory
 
     private var videoCapturer: VideoCapturer? = null
@@ -148,6 +154,18 @@ class WebRtcClient(
             .setVideoDecoderFactory(decoderFactory)
             .setAudioDeviceModule(adm)
             .createPeerConnectionFactory()
+
+        // Qué códecs de vídeo puede comprimir ESTE móvil con su chip de vídeo
+        // (hardware), en vez de con el procesador. Se consulta una vez y se usa en
+        // [preferHardwareCodec] para cada espectador. Queda en Logcat (filtra por
+        // "WebRtcClient") para saber qué ha tocado en cada móvil.
+        hardwareCodecNames = try {
+            HardwareVideoEncoderFactory(eglBase.eglBaseContext, true, true)
+                .supportedCodecs.map { it.name.uppercase() }.toSet()
+        } catch (e: Throwable) {
+            emptySet()
+        }
+        Log.i(TAG, "Códecs de vídeo por hardware en este móvil: ${hardwareCodecNames.ifEmpty { setOf("ninguno") }}")
 
         // Igual que arriba: se apaga también la cancelación de eco por software (no
         // hace nada útil sin audio que reproducir de vuelta, y de paso deja de
@@ -363,6 +381,7 @@ class WebRtcClient(
         val sender = localVideoTrack?.let { track ->
             val s = pc.addTrack(track, listOf("main"))
             applyBitrateLimits(s, currentCaptureWidth, currentCaptureHeight)
+            preferHardwareCodec(pc, s)
             s
         }
         if (sender != null) mainVideoSenders[viewerId] = sender
@@ -389,6 +408,43 @@ class WebRtcClient(
                 listener.onLocalOffer(viewerId, tunedDesc.description)
             }
         }, MediaConstraints())
+    }
+
+    /**
+     * Ordena los códecs de vídeo de la oferta para que el navegador elija primero
+     * uno que el móvil comprima por HARDWARE (su chip de vídeo), con H.264 delante
+     * de todos. Por defecto WebRTC prefiere VP8, que en muchos móviles (por ejemplo
+     * los de procesador MediaTek) solo se puede comprimir por software: a 1080p y
+     * 30 fps eso exprime el procesador, calienta el móvil y provoca pequeñas
+     * congelaciones cuando no da abasto. El chip de vídeo hace el mismo trabajo sin
+     * apenas gastar procesador ni batería.
+     *
+     * Si el móvil no tiene ningún códec por hardware, no se toca nada (sigue igual
+     * que antes, con VP8 por software). El navegador sigue pudiendo elegir otro de
+     * la lista si no soporta el primero, así que nunca deja de verse.
+     */
+    private fun preferHardwareCodec(pc: PeerConnection, videoSender: RtpSender) {
+        if (hardwareCodecNames.isEmpty()) return
+        try {
+            val transceiver = pc.transceivers.firstOrNull { it.sender.id() == videoSender.id() } ?: return
+            val codecs = factory.getRtpSenderCapabilities(MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO).codecs
+            fun rank(c: RtpCapabilities.CodecCapability): Int {
+                val name = c.name.uppercase()
+                return when {
+                    name == "H264" && name in hardwareCodecNames -> 0
+                    name in hardwareCodecNames -> 1
+                    name == "RTX" || name == "RED" || name == "ULPFEC" || name == "FLEXFEC-03" -> 3
+                    else -> 2
+                }
+            }
+            val ordered = codecs.sortedBy { rank(it) } // sortedBy es estable: respeta el orden original dentro de cada grupo
+            transceiver.setCodecPreferences(ordered)
+            Log.i(TAG, "Orden de códecs de vídeo: ${ordered.map { it.name }.distinct()}")
+        } catch (e: Throwable) {
+            // Si esta versión de WebRTC o el móvil no lo permiten, se sigue con el
+            // orden por defecto: la emisión funciona igual que antes.
+            Log.w(TAG, "No se pudo cambiar el orden de códecs", e)
+        }
     }
 
     /**
