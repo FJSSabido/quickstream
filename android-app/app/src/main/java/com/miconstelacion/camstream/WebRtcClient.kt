@@ -2,6 +2,7 @@ package com.miconstelacion.camstream
 
 import android.content.Context
 import android.content.Intent
+import android.media.MediaRecorder
 import android.media.projection.MediaProjection
 import org.webrtc.AudioSource
 import org.webrtc.AudioTrack
@@ -56,16 +57,21 @@ class WebRtcClient(
     }
 
     companion object {
-        // Techo de RESOLUCIÓN de captura: hasta 4K (2160p) si la cámara del móvil lo
-        // ofrece. pickBestSize() elige lo mejor que dé la cámara sin pasar de este
-        // techo, así que en móviles que no llegan a 4K esto no cambia nada — y en los
-        // que sí, deja de recortarse la calidad de forma artificial. El bitrate que
-        // acompaña a cada resolución se calcula aparte (ver [bitrateForResolution]):
-        // subir la resolución sin subir el bitrate a la vez es justo lo que produce
-        // pixelado (los mismos bits repartidos entre más píxeles), así que van
-        // siempre de la mano.
-        private const val MAX_CAPTURE_WIDTH = 3840
-        private const val MAX_CAPTURE_HEIGHT = 2160
+        // Techo de RESOLUCIÓN de captura. Antes era 4K (2160p): en teoría más nítido,
+        // pero en la práctica casi ninguna red de subida (ni wifi de casa ni datos
+        // móviles) sostiene de forma fiable los ~20 Mbps que hacen falta para que 4K
+        // se vea limpio — y en cuanto la red da menos de eso, son los MISMOS bits
+        // repartidos entre muchos más píxeles, que es justo lo que se ve como imagen
+        // "pixelada"/a bloques. Se confirmó que pasaba tanto en wifi como en datos
+        // móviles y ya desde antes de tocar el TURN, así que no era un problema de
+        // una red en concreto sino del techo de resolución en sí. Full HD (1080p) es
+        // el máximo habitual de las apps de streaming en directo por el mismo motivo:
+        // sigue siendo una imagen nítida, pero alcanzable con el bitrate que de verdad
+        // suele haber disponible. pickBestSize() elige lo mejor que dé la cámara sin
+        // pasar de este techo. El bitrate que acompaña a cada resolución se calcula
+        // aparte (ver [bitrateForResolution] y [minBitrateForResolution]).
+        private const val MAX_CAPTURE_WIDTH = 1920
+        private const val MAX_CAPTURE_HEIGHT = 1080
         private const val TARGET_FPS = 30
     }
 
@@ -107,8 +113,21 @@ class WebRtcClient(
                 .createInitializationOptions()
         )
 
+        // Por defecto, WebRTC captura el micrófono por la ruta "de llamada"
+        // (VOICE_COMMUNICATION): pensada para videollamadas, con banda más estrecha y
+        // una nivelación automática más agresiva orientada a que la voz se entienda
+        // por teléfono, no a captar el sonido con fidelidad. CamStream no es una
+        // llamada — es una emisión en un solo sentido — así que se usa en su lugar la
+        // ruta CAMCORDER, la misma que usan las apps de cámara/vídeo: más sensible,
+        // con más rango de frecuencias, y sin ese "aplanado" pensado para teléfono.
+        // Por el mismo motivo se apaga la cancelación de eco por hardware: solo tiene
+        // sentido si el propio móvil reproduce audio que le puede "hacer eco" al
+        // micrófono (como en una llamada con altavoz) — aquí no se reproduce nada, así
+        // que ese filtro no protege de nada y solo puede restar nitidez/sensibilidad
+        // de más a la señal real.
         val adm = JavaAudioDeviceModule.builder(context)
-            .setUseHardwareAcousticEchoCanceler(true)
+            .setAudioSource(MediaRecorder.AudioSource.CAMCORDER)
+            .setUseHardwareAcousticEchoCanceler(false)
             .setUseHardwareNoiseSuppressor(true)
             .createAudioDeviceModule()
 
@@ -121,16 +140,17 @@ class WebRtcClient(
             .setAudioDeviceModule(adm)
             .createPeerConnectionFactory()
 
-        // Se piden EXPLÍCITAMENTE las mejoras de audio de WebRTC en vez de confiar en
-        // los valores por defecto — cancelación de eco, control automático de
-        // ganancia (volumen estable, sin picos ni susurros inaudibles), supresión de
-        // ruido y filtro de graves (quita el "runrún" de fondo grave). Las claves con
-        // "2" al final piden la versión más nueva de cada algoritmo cuando el
-        // dispositivo la soporta (AEC3/AGC2/NS2), que suele sonar más limpia que la
-        // clásica.
+        // Igual que arriba: se apaga también la cancelación de eco por software (no
+        // hace nada útil sin audio que reproducir de vuelta, y de paso deja de
+        // "tocar" la señal sin necesidad). Se mantienen el control automático de
+        // ganancia (para que ni los susurros queden inaudibles ni los picos
+        // saturen — esto es justo lo que sube la SENSIBILIDAD a sonido flojo), la
+        // supresión de ruido y el filtro de graves (para seguir sin runrún de fondo,
+        // como se pidió antes). Las claves con "2" al final piden la versión más
+        // nueva de cada algoritmo cuando el dispositivo la soporta (AGC2/NS2).
         val audioConstraints = MediaConstraints().apply {
-            mandatory.add(MediaConstraints.KeyValuePair("googEchoCancellation", "true"))
-            mandatory.add(MediaConstraints.KeyValuePair("googEchoCancellation2", "true"))
+            mandatory.add(MediaConstraints.KeyValuePair("googEchoCancellation", "false"))
+            mandatory.add(MediaConstraints.KeyValuePair("googEchoCancellation2", "false"))
             mandatory.add(MediaConstraints.KeyValuePair("googAutoGainControl", "true"))
             mandatory.add(MediaConstraints.KeyValuePair("googAutoGainControl2", "true"))
             mandatory.add(MediaConstraints.KeyValuePair("googNoiseSuppression", "true"))
@@ -234,11 +254,32 @@ class WebRtcClient(
     private fun bitrateForResolution(width: Int, height: Int): Int {
         val pixels = width.toLong() * height.toLong()
         return when {
-            pixels >= 3840L * 2160L -> 20_000_000 // 4K / 2160p
+            pixels >= 3840L * 2160L -> 20_000_000 // 4K / 2160p (por si en el futuro se vuelve a permitir)
             pixels >= 2560L * 1440L -> 12_000_000 // 1440p / QHD
             pixels >= 1920L * 1080L -> 8_000_000  // 1080p / Full HD
             pixels >= 1280L * 720L -> 4_000_000   // 720p
             else -> 2_500_000
+        }
+    }
+
+    /**
+     * Suelo MÍNIMO de bitrate, a juego con [bitrateForResolution] (que solo pone el
+     * TECHO). Sin este suelo, WebRTC arranca cada conexión con un bitrate de partida
+     * muy conservador (pensado para no saturar redes desconocidas) y lo va subiendo
+     * poco a poco según va viendo que la red aguanta — ese "arranque lento" es OTRA
+     * causa de pixelado al principio de cada emisión (o durante toda ella, si la
+     * sesión es corta y nunca le da tiempo a terminar de subir), aunque la red vaya
+     * sobrada. Fijar un suelo razonable (bastante por debajo del techo, para no forzar
+     * más bitrate del que una red realmente floja pueda dar) hace que la imagen sea
+     * decente desde el primer segundo en vez de solo "después de un rato".
+     */
+    private fun minBitrateForResolution(width: Int, height: Int): Int {
+        val pixels = width.toLong() * height.toLong()
+        return when {
+            pixels >= 2560L * 1440L -> 4_000_000  // 1440p+
+            pixels >= 1920L * 1080L -> 3_000_000  // 1080p / Full HD
+            pixels >= 1280L * 720L -> 1_500_000   // 720p
+            else -> 800_000
         }
     }
 
@@ -248,11 +289,10 @@ class WebRtcClient(
      * lo que hace posible cambiar de cámara/pantalla sin cortar la transmisión.
      */
     private fun pushVideoTrackToExistingSenders() {
-        val bitrate = bitrateForResolution(currentCaptureWidth, currentCaptureHeight)
         mainVideoSenders.values.forEach { sender ->
             try {
                 sender.setTrack(localVideoTrack, false)
-                applyMaxBitrate(sender, bitrate)
+                applyBitrateLimits(sender, currentCaptureWidth, currentCaptureHeight)
             } catch (e: Exception) {
                 // Si un sender concreto falla al recibir la pista nueva, seguimos con
                 // el resto en vez de tirar abajo el cambio de fuente entero.
@@ -313,7 +353,7 @@ class WebRtcClient(
 
         val sender = localVideoTrack?.let { track ->
             val s = pc.addTrack(track, listOf("main"))
-            applyMaxBitrate(s, bitrateForResolution(currentCaptureWidth, currentCaptureHeight))
+            applyBitrateLimits(s, currentCaptureWidth, currentCaptureHeight)
             s
         }
         if (sender != null) mainVideoSenders[viewerId] = sender
@@ -332,9 +372,9 @@ class WebRtcClient(
                     override fun onSetSuccess() {
                         // Red de seguridad: en cuanto la SDP local queda fijada, WebRTC
                         // ya tiene garantizado el "encoding" del sender creado, así que
-                        // volvemos a aplicar el techo de bitrate por si la primera vez
+                        // volvemos a aplicar los límites de bitrate por si la primera vez
                         // (justo tras addTrack) no tuviera efecto todavía.
-                        applyMaxBitrate(sender, bitrateForResolution(currentCaptureWidth, currentCaptureHeight))
+                        applyBitrateLimits(sender, currentCaptureWidth, currentCaptureHeight)
                     }
                 }, tunedDesc)
                 listener.onLocalOffer(viewerId, tunedDesc.description)
@@ -398,12 +438,15 @@ class WebRtcClient(
      * [MAX_CAPTURE_WIDTH]/[MAX_CAPTURE_HEIGHT]); solo cambia el CRITERIO que usa
      * WebRTC para repartir esos mismos recursos cuando la red no da para todo.
      */
-    private fun applyMaxBitrate(sender: RtpSender?, maxBitrateBps: Int) {
+    private fun applyBitrateLimits(sender: RtpSender?, width: Int, height: Int) {
         sender ?: return
         try {
             val params = sender.parameters
             if (params.encodings.isNotEmpty()) {
-                params.encodings.forEach { it.maxBitrateBps = maxBitrateBps }
+                params.encodings.forEach {
+                    it.maxBitrateBps = bitrateForResolution(width, height)
+                    it.minBitrateBps = minBitrateForResolution(width, height)
+                }
             }
             params.degradationPreference = RtpParameters.DegradationPreference.BALANCED
             sender.parameters = params
