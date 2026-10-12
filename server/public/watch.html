@@ -58,7 +58,11 @@
   }
   /* A partir de aquí consideramos que hay sitio de sobra para poner el chat al
      lado del vídeo en vez de debajo — pensado para PC/escritorio. */
-  @media (min-width: 900px) {
+  /* Escritorio: pantalla ancha Y con ratón/trackpad. Un móvil con la opción
+     "versión para ordenador" del navegador (o en horizontal, o con la
+     pantalla en tamaño pequeño) puede tener más de 900 px de ancho, pero no
+     tiene ratón: ese caso se queda con la vista de móvil (chat flotante). */
+  @media (min-width: 900px) and (hover: hover), (min-width: 900px) and (pointer: fine) {
     html, body { height: 100%; }
     .wrap { height: 100%; }
     .main-area { flex-direction: row; overflow: hidden; }
@@ -183,7 +187,9 @@
      vista, y el chat se puede plegar con su botón 💬 si estorba. Los controles
      del vídeo (girar, pantalla completa, volumen) suben a la parte de arriba
      para no chocar con él. */
-  @media (max-width: 899px) {
+  /* Móvil: pantalla estrecha, o cualquier pantalla táctil sin ratón (aunque
+     sea ancha). Tiene que ser justo lo contrario del media query de escritorio. */
+  @media (max-width: 899px), (hover: none) and (pointer: coarse) {
     html, body { height: 100%; overflow: hidden; }
     .wrap { height: 100vh; height: 100dvh; }
     header { padding: 10px 14px; flex-wrap: nowrap; }
@@ -310,7 +316,7 @@
   const chatToggleBtn = document.getElementById('chatToggleBtn');
   const chatUnreadEl = document.getElementById('chatUnread');
   const mainAreaEl = document.querySelector('.main-area');
-  const mobileQuery = window.matchMedia('(max-width: 899px)');
+  const mobileQuery = window.matchMedia('(max-width: 899px), (hover: none) and (pointer: coarse)');
   let myViewerId = null;
   // El chat solo tiene sentido mientras hay emisión de verdad al otro lado — si
   // el anfitrión ha terminado o todavía no ha empezado, no tiene a quién
