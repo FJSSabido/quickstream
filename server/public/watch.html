@@ -799,10 +799,14 @@
       gotStream = true;
       // Audio e imagen llegan ahora en streams distintos (ver fixSyncInOffer):
       // se juntan en uno solo para el elemento <video>, sustituyendo la pista
-      // anterior del mismo tipo si la hubiera.
-      remoteStream.getTracks().filter((t) => t.kind === ev.track.kind).forEach((t) => remoteStream.removeTrack(t));
-      remoteStream.addTrack(ev.track);
-      if (videoEl.srcObject !== remoteStream) videoEl.srcObject = remoteStream;
+      // anterior del mismo tipo si la hubiera. Se crea un stream NUEVO y se
+      // vuelve a asignar cada vez: si solo se añadiera la pista al stream que el
+      // <video> ya está reproduciendo, Chrome/Brave pueden no enterarse de ella
+      // (pasaba con el audio, que llega justo después de la imagen: no sonaba).
+      const tracks = remoteStream.getTracks().filter((t) => t.kind !== ev.track.kind);
+      tracks.push(ev.track);
+      remoteStream = new MediaStream(tracks);
+      videoEl.srcObject = remoteStream;
       if (ev.track.kind === 'video') {
         videoReceiver = ev.receiver;
         applyAvOffset();
