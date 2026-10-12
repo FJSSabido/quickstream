@@ -131,8 +131,19 @@ class WebRtcClient(
         // micrófono (como en una llamada con altavoz) — aquí no se reproduce nada, así
         // que ese filtro no protege de nada y solo puede restar nitidez/sensibilidad
         // de más a la señal real.
+        // ACTUALIZACIÓN (desfase audio/vídeo): la ruta CAMCORDER sonaba bien, pero en
+        // muchos móviles (OPPO/ColorOS incluido) el fabricante le mete su propia
+        // cadena de procesado y búferes grandes pensados para grabar vídeo a
+        // fichero, donde la latencia da igual. En directo esa latencia extra hace
+        // que el sonido llegue algo DESPUÉS que la imagen. Se usa en su lugar
+        // VOICE_RECOGNITION: Android exige que esta ruta llegue "en crudo" — sin
+        // ganancia automática ni reducción de ruido del fabricante y con respuesta
+        // de frecuencia prácticamente plana —, así que conserva la fidelidad de
+        // CAMCORDER (no es la ruta "de llamada") pero con mucha menos latencia. El
+        // procesado que sí queremos (ganancia automática, supresión de ruido y
+        // filtro de graves) lo sigue haciendo WebRTC por software más abajo.
         val adm = JavaAudioDeviceModule.builder(context)
-            .setAudioSource(MediaRecorder.AudioSource.CAMCORDER)
+            .setAudioSource(MediaRecorder.AudioSource.VOICE_RECOGNITION)
             .setUseHardwareAcousticEchoCanceler(false)
             // Supresor de ruido por HARDWARE apagado: el del fabricante está afinado
             // para llamadas y, sumado al de software de WebRTC (que sigue activo más
@@ -437,9 +448,26 @@ class WebRtcClient(
                     else -> 2
                 }
             }
-            val ordered = codecs.sortedBy { rank(it) } // sortedBy es estable: respeta el orden original dentro de cada grupo
+            // Dentro de H.264, el perfil High comprime mejor que Baseline: más detalle
+            // con la misma velocidad de red. Va primero; Baseline queda detrás como
+            // reserva para el navegador que no soporte High (el navegador elige el
+            // primero de la lista que entienda, así que nunca deja de verse).
+            fun h264Profile(c: RtpCapabilities.CodecCapability): Int {
+                if (!c.name.equals("H264", ignoreCase = true)) return 0
+                val plid = c.parameters?.get("profile-level-id")?.lowercase().orEmpty()
+                return when {
+                    plid.startsWith("64") -> 0 // High
+                    plid.startsWith("4d") -> 1 // Main
+                    plid.startsWith("42e0") -> 2 // Constrained Baseline
+                    else -> 3 // Baseline u otros
+                }
+            }
+            // sortedWith es estable: respeta el orden original dentro de cada grupo.
+            val ordered = codecs.sortedWith(compareBy<RtpCapabilities.CodecCapability>({ rank(it) }, { h264Profile(it) }))
             transceiver.setCodecPreferences(ordered)
-            Log.i(TAG, "Orden de códecs de vídeo: ${ordered.map { it.name }.distinct()}")
+            Log.i(TAG, "Orden de códecs de vídeo: ${ordered.map {
+                if (it.name.equals("H264", true)) "H264(${it.parameters?.get("profile-level-id")})" else it.name
+            }.distinct()}")
         } catch (e: Throwable) {
             // Si esta versión de WebRTC o el móvil no lo permiten, se sigue con el
             // orden por defecto: la emisión funciona igual que antes.
