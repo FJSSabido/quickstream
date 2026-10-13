@@ -127,7 +127,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"
-                android:text="Toca para cambiar sin cortar la transmisión. Una fuente a la vez, o las dos cámaras juntas con «Ambas cámaras» si tu móvil lo permite."
+                android:text="Toca para cambiar sin cortar la transmisión. Solo una cámara/pantalla activa a la vez."
                 android:textColor="@color/text_secondary"
                 android:textSize="11sp" />
 
@@ -185,22 +185,6 @@
                     android:textSize="13sp"
                     app:cornerRadius="16dp" />
             </LinearLayout>
-
-            <!-- Modo dual: trasera + frontal a la vez. Si el móvil no lo admite,
-                 se ve atenuado y al tocarlo explica por qué no está disponible. -->
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnSourceDual"
-                android:layout_width="match_parent"
-                android:layout_height="56dp"
-                android:layout_marginTop="10dp"
-                android:insetTop="0dp"
-                android:insetBottom="0dp"
-                android:gravity="center"
-                android:maxLines="1"
-                android:text="📷🤳  Ambas cámaras"
-                android:textAllCaps="false"
-                android:textSize="13sp"
-                app:cornerRadius="16dp" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnToggleMic"

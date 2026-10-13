@@ -16,23 +16,8 @@ import org.webrtc.PeerConnection
 
 private const val TAG = "BroadcastEngine"
 
-/**
- * Las fuentes de vídeo posibles. Nunca hay dos activas a la vez, salvo
- * [DUAL_CAMERA] (modo dual): trasera como vídeo principal + frontal como vídeo
- * secundario, solo en móviles que permiten abrir las dos cámaras a la vez (ver
- * [DualCameraSupport]).
- */
-enum class VideoSource { NONE, FRONT_CAMERA, BACK_CAMERA, SCREEN, DUAL_CAMERA }
-
-/** Mensaje que ve el usuario cuando su móvil no admite el modo dual. */
-const val DUAL_NOT_SUPPORTED_MESSAGE =
-    "Tu móvil no permite usar las dos cámaras a la vez, así que el modo dual no está disponible en este dispositivo."
-
-/** Abre las dos cámaras del modo dual, o lanza un error claro si el móvil no lo permite. */
-private fun WebRtcClient.startDual(context: Context) {
-    val pair = DualCameraSupport.cameraPair(context) ?: throw IllegalStateException(DUAL_NOT_SUPPORTED_MESSAGE)
-    startDualCapture(pair.first, pair.second)
-}
+/** Las tres fuentes de vídeo posibles. Nunca hay dos activas a la vez. */
+enum class VideoSource { NONE, FRONT_CAMERA, BACK_CAMERA, SCREEN }
 
 /** Un mensaje del chat compartido — de un espectador o del propio anfitrión. */
 data class ChatMessage(
@@ -83,8 +68,6 @@ object BroadcastEngine {
     // sigue hablando de LA MISMA emisión o si ya se paró/arrancó otra mientras
     // tanto — evita que una respuesta tardía pise un estado más nuevo.
     private var startGeneration = 0
-    // Contexto de la emisión actual (lo necesita el modo dual para consultar las cámaras).
-    private var sessionContext: Context? = null
 
     // --- Reconexión automática de la señalización ---------------------------
     // Si el WebSocket con el servidor se corta en plena emisión (microcorte de red,
@@ -117,7 +100,6 @@ object BroadcastEngine {
         chatMessages.value = emptyList() // sala/emisión nueva = chat nuevo, sin arrastrar el anterior
 
         val appContext = context.applicationContext
-        sessionContext = appContext
         val viewerUrl = buildViewerUrl(serverUrl, room)
         stateFlow.value = BroadcastState(
             isRunning = true, isLive = false, statusText = "Conectando…", viewerUrl = viewerUrl,
@@ -158,17 +140,6 @@ object BroadcastEngine {
             override fun onLocalOffer(viewerId: String, sdp: String) {
                 signalingClient?.sendOffer(viewerId, sdp)
             }
-            override fun onDualCameraFailed(reason: String) {
-                // El móvil dijo que admitía las dos cámaras pero la segunda no ha
-                // llegado a funcionar: se sigue emitiendo solo con la trasera (que ya
-                // está funcionando como vídeo principal) y se avisa al usuario.
-                if (stateFlow.value.activeSource != VideoSource.DUAL_CAMERA) return
-                stateFlow.value = stateFlow.value.copy(
-                    activeSource = VideoSource.BACK_CAMERA,
-                    error = "No se pudo mantener el modo dual (las dos cámaras a la vez) en este móvil. Se sigue emitiendo con la trasera."
-                )
-                broadcastState()
-            }
         }, extraIceServers)
         webRtcClient = client
 
@@ -181,7 +152,6 @@ object BroadcastEngine {
                 }
                 VideoSource.FRONT_CAMERA -> client.startCameraCapture(true)
                 VideoSource.BACK_CAMERA -> client.startCameraCapture(false)
-                VideoSource.DUAL_CAMERA -> client.startDual(appContext)
                 // El vídeo es opcional, igual que el micrófono: se puede emitir solo
                 // audio desde el principio, sin arrancar ninguna cámara/pantalla.
                 VideoSource.NONE -> { /* sin vídeo */ }
@@ -298,8 +268,7 @@ object BroadcastEngine {
         // si más adelante cambia, ya lo cubre broadcastState() avisando a todos.
         val s = stateFlow.value
         signalingClient?.sendState(
-            hasVideo = s.activeSource != VideoSource.NONE, hasAudio = s.micEnabled,
-            dual = s.activeSource == VideoSource.DUAL_CAMERA, viewerId = viewerId
+            hasVideo = s.activeSource != VideoSource.NONE, hasAudio = s.micEnabled, viewerId = viewerId
         )
     }
 
@@ -352,12 +321,9 @@ object BroadcastEngine {
         if (!stateFlow.value.isRunning) return
 
         try {
-            // Cualquier fuente que no sea el modo dual apaga antes la cámara secundaria.
-            if (source != VideoSource.DUAL_CAMERA) client.stopPip()
             when (source) {
                 VideoSource.FRONT_CAMERA -> client.startCameraCapture(true)
                 VideoSource.BACK_CAMERA -> client.startCameraCapture(false)
-                VideoSource.DUAL_CAMERA -> client.startDual(sessionContext ?: return)
                 VideoSource.SCREEN -> {
                     if (projectionData == null) return
                     client.startScreenCapture(projectionData)
@@ -382,10 +348,7 @@ object BroadcastEngine {
      */
     private fun broadcastState() {
         val s = stateFlow.value
-        signalingClient?.sendState(
-            hasVideo = s.activeSource != VideoSource.NONE, hasAudio = s.micEnabled,
-            dual = s.activeSource == VideoSource.DUAL_CAMERA
-        )
+        signalingClient?.sendState(hasVideo = s.activeSource != VideoSource.NONE, hasAudio = s.micEnabled)
     }
 
     fun setMicEnabled(enabled: Boolean) {

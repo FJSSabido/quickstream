@@ -34,15 +34,6 @@
     background: rgba(20,22,28,0.7); color: #eef1f5; backdrop-filter: blur(2px);
   }
   :fullscreen .fs-viewer-count.known, :-webkit-full-screen .fs-viewer-count.known { display: block; }
-  /* Modo dual: el segundo vídeo (la otra cámara) en una ventanita. Tocándola se
-     intercambia con el vídeo grande. */
-  .pip-video {
-    display: none; position: absolute; z-index: 5; top: 66px; right: 14px;
-    width: 24%; max-width: 260px; height: auto; object-fit: cover;
-    border-radius: 12px; border: 2px solid rgba(255,255,255,0.85);
-    box-shadow: 0 4px 16px rgba(0,0,0,0.5); background: #000; cursor: pointer;
-  }
-  .pip-video.show { display: block; }
   .status.live::before { content: "● "; }
   .status.off { background: #3a1c1c; color: #f87171; }
   /* Móvil: el vídeo ocupa toda la pantalla y el chat flota encima (ver el
@@ -225,7 +216,6 @@
        fila de botones: arriba del todo, en muchos móviles, está el agujero de la
        cámara frontal. También respeta la zona segura que indique el móvil. */
     .fs-viewer-count { top: calc(66px + env(safe-area-inset-top, 0px)); }
-    .pip-video { top: 112px; right: 12px; width: 30%; max-width: 150px; border-radius: 10px; }
     #noVideoBadge { left: 12px; }
     #noAudioBadge { right: 12px; }
     .chat-panel {
@@ -286,7 +276,6 @@
     <div class="video-area">
       <video id="remoteVideo" playsinline autoplay muted></video>
       <div id="fsViewerCount" class="fs-viewer-count" title="Espectadores conectados">👁 0</div>
-      <video id="pipVideo" class="pip-video" playsinline autoplay muted title="Toca para intercambiar las cámaras" aria-label="Segunda cámara: toca para intercambiar"></video>
       <button id="rotateCcwBtn" class="rotate-btn" type="button" title="Girar 90° a la izquierda" aria-label="Girar a la izquierda">⟲</button>
       <button id="rotateBtn" class="rotate-btn" type="button" title="Girar 90° a la derecha" aria-label="Girar a la derecha">⟳</button>
       <button id="fullscreenBtn" class="rotate-btn" type="button" title="Pantalla completa" aria-label="Pantalla completa">⛶</button>
@@ -580,19 +569,15 @@
   // con el sonido.
   const AV_OFFSET_MS = 200;
   let videoReceiver = null;
-  let pipReceiver = null; // segundo vídeo (modo dual)
   const canDelayVideo = typeof RTCRtpReceiver !== 'undefined' &&
     ('jitterBufferTarget' in RTCRtpReceiver.prototype || 'playoutDelayHint' in RTCRtpReceiver.prototype);
 
   function applyAvOffset() {
-    // Mismo retraso a los dos vídeos (en modo dual), para que ambos cuadren con la voz.
-    [videoReceiver, pipReceiver].forEach((r) => {
-      if (!r) return;
-      try {
-        if ('jitterBufferTarget' in r) r.jitterBufferTarget = AV_OFFSET_MS;
-        else r.playoutDelayHint = AV_OFFSET_MS / 1000;
-      } catch (e) { /* ignorar */ }
-    });
+    if (!videoReceiver) return;
+    try {
+      if ('jitterBufferTarget' in videoReceiver) videoReceiver.jitterBufferTarget = AV_OFFSET_MS;
+      else videoReceiver.playoutDelayHint = AV_OFFSET_MS / 1000;
+    } catch (e) { /* ignorar */ }
   }
 
   // Saca la pista de audio del "grupo de sincronización" de la imagen cambiando
@@ -653,55 +638,6 @@
       // Sin TURN seguimos con los STUN de siempre — no bloqueamos la conexión por esto.
     }
   }
-
-  // --- Modo dual (dos cámaras) --------------------------------------------------
-  // La app puede mandar un SEGUNDO vídeo (stream "pip": la cámara frontal) además
-  // del principal. Se muestra en una ventanita encima del vídeo grande y, al
-  // tocarla, se intercambian: lo que estaba pequeño pasa a grande y viceversa.
-  // El audio siempre va con el vídeo grande (el elemento <video> principal).
-  const pipEl = document.getElementById('pipVideo');
-  let mainVideoTrack = null;
-  let pipVideoTrack = null;
-  let audioTrack = null;
-  let dualOn = false;   // lo dice la app en el mensaje "state"
-  let swapped = false;  // true = la cámara secundaria está en grande
-
-  function sameTracks(stream, tracks) {
-    if (!stream) return false;
-    const cur = stream.getTracks();
-    return cur.length === tracks.length && tracks.every((t) => cur.includes(t));
-  }
-
-  function renderTracks() {
-    const showPip = dualOn && !!pipVideoTrack && !!mainVideoTrack;
-    if (!showPip) swapped = false;
-    const big = swapped ? pipVideoTrack : mainVideoTrack;
-    const small = swapped ? mainVideoTrack : pipVideoTrack;
-    const bigTracks = [big, audioTrack].filter(Boolean);
-    if (!sameTracks(videoEl.srcObject, bigTracks)) {
-      // Stream NUEVO cada vez: si solo se añadieran pistas al stream que el
-      // <video> ya reproduce, Chrome/Brave pueden no enterarse (el audio no sonaba).
-      remoteStream = new MediaStream(bigTracks);
-      videoEl.srcObject = remoteStream;
-      videoEl.play().catch(() => { /* el aviso de "toca para reproducir" lo gestiona ontrack */ });
-    }
-    if (showPip) {
-      if (!sameTracks(pipEl.srcObject, [small])) {
-        pipEl.srcObject = new MediaStream([small]);
-        pipEl.play().catch(() => {});
-      }
-      pipEl.classList.add('show');
-    } else {
-      pipEl.classList.remove('show');
-    }
-    layoutVideo();
-  }
-
-  pipEl.addEventListener('click', (ev) => {
-    ev.stopPropagation();
-    swapped = !swapped;
-    renderTracks();
-  });
 
   let pc = null;
   let remoteStream = new MediaStream();
@@ -803,8 +739,6 @@
         setStatus('Sin emisión', 'off');
         showOverlay('<p>La emisión ha terminado o se ha desconectado.</p>');
         resetSignalBadges();
-        dualOn = false;
-        pipEl.classList.remove('show');
         if (pc) { pc.close(); pc = null; }
         return;
       }
@@ -826,8 +760,6 @@
         knownHasVideo = !!msg.hasVideo;
         knownHasAudio = !!msg.hasAudio;
         updateSignalBadges();
-        dualOn = !!msg.dual;
-        renderTracks();
         return;
       }
 
@@ -873,13 +805,6 @@
     if (pc) pc.close();
     remoteStream = new MediaStream();
     videoReceiver = null;
-    pipReceiver = null;
-    mainVideoTrack = null;
-    pipVideoTrack = null;
-    audioTrack = null;
-    swapped = false;
-    pipEl.classList.remove('show');
-    pipEl.srcObject = null;
     pc = new RTCPeerConnection(rtcConfig);
 
     // Safari/WebKit tiene un fallo conocido con conexiones que SOLO reciben
@@ -914,31 +839,20 @@
       // vuelve a asignar cada vez: si solo se añadiera la pista al stream que el
       // <video> ya está reproduciendo, Chrome/Brave pueden no enterarse de ella
       // (pasaba con el audio, que llega justo después de la imagen: no sonaba).
-      // Se clasifica cada pista: audio, vídeo principal o vídeo secundario (el
-      // del modo dual llega en el stream "pip"), y renderTracks() las coloca.
-      const streamId = ev.streams && ev.streams[0] ? ev.streams[0].id : '';
-      if (ev.track.kind === 'audio') {
-        audioTrack = ev.track;
-      } else if (streamId === 'pip') {
-        pipVideoTrack = ev.track;
-        pipReceiver = ev.receiver;
-        applyAvOffset();
-      } else {
-        mainVideoTrack = ev.track;
+      const tracks = remoteStream.getTracks().filter((t) => t.kind !== ev.track.kind);
+      tracks.push(ev.track);
+      remoteStream = new MediaStream(tracks);
+      videoEl.srcObject = remoteStream;
+      if (ev.track.kind === 'video') {
         videoReceiver = ev.receiver;
         applyAvOffset();
       }
-      renderTracks();
-      if (ev.track.kind === 'video' && streamId === 'pip') return; // el resto es solo para el vídeo/audio principal
       if (knownHasVideo === null && ev.track.kind === 'video') {
         knownHasVideo = true;
         updateSignalBadges();
       }
       layoutVideo();
-      videoEl.play().catch((err) => {
-        // "AbortError" = se interrumpió porque llegó otra pista y se recargó el
-        // reproductor (normal al conectar): no es un bloqueo, no hay que avisar.
-        if (err && err.name === 'AbortError') return;
+      videoEl.play().catch(() => {
         needsPlayGesture = true;
         showOverlay('<p>Toca para activar el sonido y reproducir</p><button class="btn" id="playBtn">Reproducir</button>');
         document.getElementById('playBtn').onclick = () => {

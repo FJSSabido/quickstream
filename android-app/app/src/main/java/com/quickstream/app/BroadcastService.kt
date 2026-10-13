@@ -231,7 +231,7 @@ class BroadcastService : Service() {
             val type = when (source) {
                 VideoSource.SCREEN ->
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-                VideoSource.FRONT_CAMERA, VideoSource.BACK_CAMERA, VideoSource.DUAL_CAMERA ->
+                VideoSource.FRONT_CAMERA, VideoSource.BACK_CAMERA ->
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
                 VideoSource.NONE ->
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
