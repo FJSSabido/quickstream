@@ -165,7 +165,7 @@ object BroadcastEngine {
                 if (stateFlow.value.activeSource != VideoSource.DUAL_CAMERA) return
                 stateFlow.value = stateFlow.value.copy(
                     activeSource = VideoSource.BACK_CAMERA,
-                    error = "Tu móvil no ha permitido abrir las dos cámaras a la vez. Se sigue emitiendo con la trasera."
+                    error = "No se pudo mantener el modo dual (las dos cámaras a la vez) en este móvil. Se sigue emitiendo con la trasera."
                 )
                 broadcastState()
             }
