@@ -162,8 +162,10 @@ class SignalingClient(
      * conectados (para avisar de un cambio en caliente); con [viewerId], solo a ese
      * espectador en concreto (para ponerlo al día justo al conectarse).
      */
-    fun sendState(hasVideo: Boolean, hasAudio: Boolean, viewerId: String? = null) {
+    fun sendState(hasVideo: Boolean, hasAudio: Boolean, dual: Boolean = false, viewerId: String? = null) {
+        // "dual": hay un segundo vídeo (cámara frontal) en la ventanita del espectador.
         val json = JSONObject().put("type", "state").put("hasVideo", hasVideo).put("hasAudio", hasAudio)
+            .put("dual", dual)
         if (viewerId != null) json.put("viewerId", viewerId)
         send(json)
     }

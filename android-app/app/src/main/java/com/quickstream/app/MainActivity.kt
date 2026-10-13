@@ -39,6 +39,8 @@ class MainActivity : AppCompatActivity() {
     // marcha, el estado real vive en BroadcastEngine.stateFlow y estos campos dejan de
     // consultarse (ver currentSource/currentMic).
     private var pendingSource: VideoSource = VideoSource.BACK_CAMERA
+    // Si este móvil permite usar la trasera y la frontal a la vez (modo dual).
+    private val dualSupported: Boolean by lazy { DualCameraSupport.isSupported(this) }
     private var pendingMicEnabled = true
     private var pendingStart = false
 
@@ -97,6 +99,13 @@ class MainActivity : AppCompatActivity() {
         binding.btnSourceFront.setOnClickListener { onSourceButtonClicked(VideoSource.FRONT_CAMERA) }
         binding.btnSourceBack.setOnClickListener { onSourceButtonClicked(VideoSource.BACK_CAMERA) }
         binding.btnSourceScreen.setOnClickListener { onSourceButtonClicked(VideoSource.SCREEN) }
+        binding.btnSourceDual.setOnClickListener {
+            if (!dualSupported) {
+                Toast.makeText(this, DUAL_NOT_SUPPORTED_MESSAGE, Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+            onSourceButtonClicked(VideoSource.DUAL_CAMERA)
+        }
 
         binding.btnToggleMic.setOnClickListener { onMicButtonClicked() }
 
@@ -412,6 +421,9 @@ class MainActivity : AppCompatActivity() {
         tintButton(binding.btnSourceFront, src == VideoSource.FRONT_CAMERA)
         tintButton(binding.btnSourceBack, src == VideoSource.BACK_CAMERA)
         tintButton(binding.btnSourceScreen, src == VideoSource.SCREEN)
+        tintButton(binding.btnSourceDual, src == VideoSource.DUAL_CAMERA)
+        // Sin soporte: se ve atenuado, pero sigue pulsable para explicar el motivo.
+        if (!dualSupported) binding.btnSourceDual.alpha = 0.45f
     }
 
     private fun updateAudioButtonStates() {

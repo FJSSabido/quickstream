@@ -61,10 +61,20 @@ class WebRtcClient(
     interface Listener {
         fun onLocalIceCandidate(viewerId: String, candidate: IceCandidate)
         fun onLocalOffer(viewerId: String, sdp: String)
+        /** La segunda cámara del modo dual no ha llegado a funcionar (el móvil no lo permite). */
+        fun onDualCameraFailed(reason: String) {}
     }
 
     companion object {
         private const val TAG = "WebRtcClient"
+        // Modo dual: la cámara secundaria (la que se ve en la ventanita del
+        // espectador) va a menos resolución y bitrate que la principal — se ve
+        // pequeña, y así el modo dual gasta poca red y poca batería de más.
+        private const val PIP_MAX_WIDTH = 960
+        private const val PIP_MAX_HEIGHT = 720
+        private const val PIP_FPS = 30
+        private const val PIP_MAX_BITRATE = 1_200_000
+        private const val PIP_MIN_BITRATE = 300_000
         // Techo de RESOLUCIÓN de captura. Antes era 4K (2160p): en teoría más nítido,
         // pero en la práctica casi ninguna red de subida (ni wifi de casa ni datos
         // móviles) sostiene de forma fiable los ~20 Mbps que hacen falta para que 4K
@@ -96,6 +106,7 @@ class WebRtcClient(
     // cuanto se vuelve a la app. Los espectadores no tienen que recargar nada.
     private val mainHandler = Handler(Looper.getMainLooper())
     private var cameraFront: Boolean? = null // cámara activa ahora (null = pantalla o sin vídeo)
+    private var cameraDevice: String? = null // id concreto de esa cámara (para reabrir la misma)
     private var cameraRetryDelayMs = 1000L
     private var cameraRestartPending = false
     private var released = false
@@ -121,6 +132,132 @@ class WebRtcClient(
         override fun onCameraClosed() {}
     }
 
+    // --- Segunda cámara (modo dual) ---------------------------------------------
+    // En modo dual se emiten DOS vídeos a la vez: la cámara trasera como vídeo
+    // principal (igual que siempre) y la frontal como vídeo secundario, que el
+    // espectador ve en una ventanita y puede intercambiar con la principal. Cada
+    // espectador tiene SIEMPRE un segundo emisor de vídeo reservado desde que se
+    // conecta (vacío si no hay modo dual), así que activar o desactivar el modo
+    // dual en plena emisión solo pone o quita la pista de ese emisor — sin
+    // renegociar ni cortar nada, igual que los demás cambios de fuente.
+    private var pipCapturer: VideoCapturer? = null
+    private var pipSource: VideoSource? = null
+    private var pipHelper: SurfaceTextureHelper? = null
+    private var pipTrack: VideoTrack? = null
+    private val pipSenders = mutableMapOf<String, RtpSender>()
+    private var pipDevice: String? = null // != null mientras el modo dual esté activo
+    private var pipGotFirstFrame = false
+    private var pipRestartPending = false
+
+    private val pipEvents = object : CameraVideoCapturer.CameraEventsHandler {
+        override fun onCameraError(errorDescription: String?) = onPipProblem("error: $errorDescription")
+        override fun onCameraDisconnected() = onPipProblem("desconectada por el sistema")
+        override fun onCameraFreezed(errorDescription: String?) = onPipProblem("congelada: $errorDescription")
+        override fun onCameraOpening(cameraName: String?) {}
+        override fun onFirstFrameAvailable() {
+            Log.i(TAG, "Cámara secundaria (modo dual) funcionando")
+            mainHandler.post { pipGotFirstFrame = true }
+        }
+        override fun onCameraClosed() {}
+    }
+
+    private fun onPipProblem(what: String) {
+        Log.w(TAG, "Cámara secundaria (modo dual) $what")
+        mainHandler.post {
+            val device = pipDevice ?: return@post
+            if (released) return@post
+            if (!pipGotFirstFrame) {
+                // No ha llegado a dar ni una imagen: lo más probable es que el móvil
+                // no permita abrir las dos cámaras a la vez aunque diga que sí.
+                stopPip()
+                listener.onDualCameraFailed(what)
+                return@post
+            }
+            // Ya había funcionado: corte puntual (p. ej. al cambiar de app) → reabrir.
+            if (pipRestartPending) return@post
+            pipRestartPending = true
+            mainHandler.postDelayed({
+                pipRestartPending = false
+                if (released || pipDevice != device) return@postDelayed
+                try {
+                    startPipCamera(device)
+                } catch (e: Exception) {
+                    Log.w(TAG, "No se pudo reabrir la cámara secundaria todavía", e)
+                    onPipProblem("no se pudo reabrir")
+                }
+            }, 3000)
+        }
+    }
+
+    /**
+     * Arranca el modo dual: [backId] como vídeo principal y [frontId] como vídeo
+     * secundario. Los ids vienen de [DualCameraSupport.cameraPair], que garantiza
+     * que el móvil permite abrir justo esas dos cámaras a la vez.
+     */
+    fun startDualCapture(backId: String, frontId: String) {
+        startCameraCapture(false, backId)
+        pipGotFirstFrame = false
+        startPipCamera(frontId)
+    }
+
+    private fun startPipCamera(deviceName: String) {
+        stopPipCapture()
+        pipDevice = deviceName
+        val enumerator = Camera2Enumerator(context)
+        val capturer = enumerator.createCapturer(deviceName, pipEvents)
+        pipCapturer = capturer
+        val source = factory.createVideoSource(false)
+        pipSource = source
+        val helper = SurfaceTextureHelper.create("PipCaptureThread", eglBase.eglBaseContext)
+        pipHelper = helper
+        capturer.initialize(helper, context, source.capturerObserver)
+        val (w, h) = pickBestSize(enumerator, deviceName, PIP_MAX_WIDTH, PIP_MAX_HEIGHT)
+        capturer.startCapture(w, h, PIP_FPS)
+        pipTrack = factory.createVideoTrack("video1", source)
+        pushPipTrackToSenders()
+    }
+
+    /** Sale del modo dual: apaga la cámara secundaria y vacía su emisor en cada espectador. */
+    fun stopPip() {
+        pipDevice = null
+        stopPipCapture()
+        pushPipTrackToSenders()
+    }
+
+    private fun stopPipCapture() {
+        try { pipCapturer?.stopCapture() } catch (e: Exception) { /* ignorar */ }
+        pipCapturer?.dispose()
+        pipCapturer = null
+        pipTrack?.dispose()
+        pipTrack = null
+        pipSource?.dispose()
+        pipSource = null
+        pipHelper?.dispose()
+        pipHelper = null
+    }
+
+    private fun pushPipTrackToSenders() {
+        pipSenders.values.forEach { sender ->
+            try {
+                sender.setTrack(pipTrack, false)
+                applyPipBitrateLimits(sender)
+            } catch (e: Exception) { /* seguimos con el resto */ }
+        }
+    }
+
+    private fun applyPipBitrateLimits(sender: RtpSender?) {
+        sender ?: return
+        try {
+            val params = sender.parameters
+            params.encodings.forEach {
+                it.maxBitrateBps = PIP_MAX_BITRATE
+                it.minBitrateBps = PIP_MIN_BITRATE
+            }
+            params.degradationPreference = RtpParameters.DegradationPreference.BALANCED
+            sender.parameters = params
+        } catch (e: Exception) { /* bitrate por defecto */ }
+    }
+
     private fun scheduleCameraRestart() {
         mainHandler.post {
             val front = cameraFront ?: return@post
@@ -134,7 +271,7 @@ class WebRtcClient(
                 if (released || cameraFront != front) return@postDelayed
                 try {
                     Log.i(TAG, "Reabriendo la cámara (${if (front) "frontal" else "trasera"})")
-                    startCameraCapture(front)
+                    startCameraCapture(front, cameraDevice)
                 } catch (e: Exception) {
                     Log.w(TAG, "No se pudo reabrir la cámara todavía", e)
                     scheduleCameraRestart()
@@ -283,14 +420,15 @@ class WebRtcClient(
      * se empuja EN CALIENTE a todos ellos (ver [pushVideoTrackToExistingSenders]) —
      * no hace falta parar ni volver a conectar nada.
      */
-    fun startCameraCapture(useFrontCamera: Boolean) {
+    fun startCameraCapture(useFrontCamera: Boolean, deviceOverride: String? = null) {
         stopVideoCapture()
 
         val enumerator = Camera2Enumerator(context)
-        val deviceName = enumerator.deviceNames.firstOrNull {
+        val deviceName = deviceOverride ?: enumerator.deviceNames.firstOrNull {
             if (useFrontCamera) enumerator.isFrontFacing(it) else enumerator.isBackFacing(it)
         } ?: enumerator.deviceNames.firstOrNull()
             ?: throw IllegalStateException("Este dispositivo no tiene ninguna cámara disponible")
+        cameraDevice = deviceName
 
         val capturer = enumerator.createCapturer(deviceName, cameraEvents)
         videoCapturer = capturer
@@ -452,14 +590,27 @@ class WebRtcClient(
             override fun onAddTrack(p0: RtpReceiver?, p1: Array<out MediaStream>?) {}
         }) ?: return
 
-        val sender = localVideoTrack?.let { track ->
-            val s = pc.addTrack(track, listOf("main"))
-            applyBitrateLimits(s, currentCaptureWidth, currentCaptureHeight)
-            preferHardwareCodec(pc, s)
-            s
-        }
-        if (sender != null) mainVideoSenders[viewerId] = sender
+        // Emisor de vídeo principal: se reserva SIEMPRE (aunque ahora mismo no haya
+        // vídeo), para poder encender la cámara/pantalla más tarde sin renegociar.
+        val sender: RtpSender = localVideoTrack?.let { track -> pc.addTrack(track, listOf("main")) }
+            ?: pc.addTransceiver(
+                MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO,
+                RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.SEND_ONLY, listOf("main"))
+            ).sender
+        applyBitrateLimits(sender, currentCaptureWidth, currentCaptureHeight)
+        preferHardwareCodec(pc, sender)
+        mainVideoSenders[viewerId] = sender
         localAudioTrack?.let { pc.addTrack(it, listOf("main")) }
+        // Emisor del vídeo secundario (modo dual), en su propio stream "pip" para
+        // que el espectador sepa cuál es cuál. Vacío mientras no haya modo dual.
+        val pipSender = pc.addTransceiver(
+            MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO,
+            RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.SEND_ONLY, listOf("pip"))
+        ).sender
+        pipTrack?.let { pipSender.setTrack(it, false) }
+        applyPipBitrateLimits(pipSender)
+        preferHardwareCodec(pc, pipSender)
+        pipSenders[viewerId] = pipSender
 
         peerConnections[viewerId] = pc
 
@@ -477,6 +628,7 @@ class WebRtcClient(
                         // volvemos a aplicar los límites de bitrate por si la primera vez
                         // (justo tras addTrack) no tuviera efecto todavía.
                         applyBitrateLimits(sender, currentCaptureWidth, currentCaptureHeight)
+                        applyPipBitrateLimits(pipSender)
                     }
                 }, tunedDesc)
                 listener.onLocalOffer(viewerId, tunedDesc.description)
@@ -647,6 +799,7 @@ class WebRtcClient(
 
     fun closeViewer(viewerId: String) {
         mainVideoSenders.remove(viewerId)
+        pipSenders.remove(viewerId)
         peerConnections.remove(viewerId)?.close()
     }
 
@@ -657,6 +810,9 @@ class WebRtcClient(
         peerConnections.values.forEach { it.close() }
         peerConnections.clear()
         mainVideoSenders.clear()
+        pipSenders.clear()
+        pipDevice = null
+        stopPipCapture()
         stopVideoCapture()
         audioSource?.dispose()
         audioSource = null
