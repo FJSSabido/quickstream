@@ -4,10 +4,13 @@ import android.content.Context
 import android.content.Intent
 import android.media.MediaRecorder
 import android.media.projection.MediaProjection
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import org.webrtc.AudioSource
 import org.webrtc.AudioTrack
 import org.webrtc.Camera2Enumerator
+import org.webrtc.CameraVideoCapturer
 import org.webrtc.DataChannel
 import org.webrtc.DefaultVideoDecoderFactory
 import org.webrtc.DefaultVideoEncoderFactory
@@ -82,6 +85,63 @@ class WebRtcClient(
 
     private lateinit var eglBase: EglBase
     private var hardwareCodecNames: Set<String> = emptySet()
+
+    // --- Recuperación automática de la cámara ---------------------------------
+    // Al pasar a otra app, Android (y sobre todo capas como ColorOS) puede quitarle
+    // la cámara a QuickStream aunque siga emitiendo en primer plano: la imagen se
+    // congela o se corta para los espectadores. Cuando eso pasa, la librería avisa
+    // (desconexión, error o "cámara congelada" tras unos segundos sin fotogramas) y
+    // aquí se vuelve a abrir la misma cámara sola, reintentando cada vez con más
+    // espera (1, 2, 4, 8 s) hasta que el sistema la devuelva — como muy tarde, en
+    // cuanto se vuelve a la app. Los espectadores no tienen que recargar nada.
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var cameraFront: Boolean? = null // cámara activa ahora (null = pantalla o sin vídeo)
+    private var cameraRetryDelayMs = 1000L
+    private var cameraRestartPending = false
+    private var released = false
+
+    private val cameraEvents = object : CameraVideoCapturer.CameraEventsHandler {
+        override fun onCameraError(errorDescription: String?) {
+            Log.w(TAG, "Error de cámara: $errorDescription")
+            scheduleCameraRestart()
+        }
+        override fun onCameraDisconnected() {
+            Log.w(TAG, "El sistema ha desconectado la cámara")
+            scheduleCameraRestart()
+        }
+        override fun onCameraFreezed(errorDescription: String?) {
+            Log.w(TAG, "Cámara congelada: $errorDescription")
+            scheduleCameraRestart()
+        }
+        override fun onCameraOpening(cameraName: String?) {}
+        override fun onFirstFrameAvailable() {
+            Log.i(TAG, "Cámara funcionando (primer fotograma recibido)")
+            mainHandler.post { cameraRetryDelayMs = 1000L }
+        }
+        override fun onCameraClosed() {}
+    }
+
+    private fun scheduleCameraRestart() {
+        mainHandler.post {
+            val front = cameraFront ?: return@post
+            if (released || cameraRestartPending) return@post
+            cameraRestartPending = true
+            val delay = cameraRetryDelayMs
+            cameraRetryDelayMs = minOf(cameraRetryDelayMs * 2, 8000L)
+            mainHandler.postDelayed({
+                cameraRestartPending = false
+                // Si mientras tanto se cambió de fuente o se paró la emisión, nada que hacer.
+                if (released || cameraFront != front) return@postDelayed
+                try {
+                    Log.i(TAG, "Reabriendo la cámara (${if (front) "frontal" else "trasera"})")
+                    startCameraCapture(front)
+                } catch (e: Exception) {
+                    Log.w(TAG, "No se pudo reabrir la cámara todavía", e)
+                    scheduleCameraRestart()
+                }
+            }, delay)
+        }
+    }
     private lateinit var factory: PeerConnectionFactory
 
     private var videoCapturer: VideoCapturer? = null
@@ -232,8 +292,9 @@ class WebRtcClient(
         } ?: enumerator.deviceNames.firstOrNull()
             ?: throw IllegalStateException("Este dispositivo no tiene ninguna cámara disponible")
 
-        val capturer = enumerator.createCapturer(deviceName, null)
+        val capturer = enumerator.createCapturer(deviceName, cameraEvents)
         videoCapturer = capturer
+        cameraFront = useFrontCamera
 
         val source = factory.createVideoSource(false)
         videoSource = source
@@ -257,6 +318,7 @@ class WebRtcClient(
      */
     fun startScreenCapture(data: Intent) {
         stopVideoCapture()
+        cameraFront = null
 
         val capturer = ScreenCapturerAndroid(data, object : MediaProjection.Callback() {
             override fun onStop() {
@@ -360,6 +422,7 @@ class WebRtcClient(
      */
     fun stopVideo() {
         stopVideoCapture()
+        cameraFront = null
         pushVideoTrackToExistingSenders()
     }
 
@@ -588,6 +651,9 @@ class WebRtcClient(
     }
 
     fun release() {
+        released = true
+        cameraFront = null
+        mainHandler.removeCallbacksAndMessages(null)
         peerConnections.values.forEach { it.close() }
         peerConnections.clear()
         mainVideoSenders.clear()
