@@ -559,11 +559,12 @@
   });
 
   // --- Sincronización audio / imagen -------------------------------------------
-  // En el móvil, la imagen tarda bastante más que el sonido en salir: cámara,
-  // procesado y codificación H.264 frente a unos pocos milisegundos de audio
-  // (VIDEO_PIPELINE_EXTRA_MS, medido con destellos y pitidos grabados por el
-  // móvil: ~220 ms). La sincronización automática de WebRTC no lo corrige del
-  // todo, así que el audio se saca de ella (ver fixSyncInOffer) y la
+  // En el móvil, imagen y sonido no tardan lo mismo en salir, y depende de la
+  // cámara: la trasera (más procesado) saca la imagen ~220 ms DESPUÉS que el
+  // sonido; la frontal, ~130 ms ANTES (medido en un OnePlus con destellos y
+  // pitidos grabados por el móvil). La app dice qué fuente está emitiendo
+  // (msg.source en el mensaje 'state'). La sincronización automática de WebRTC
+  // no lo corrige, así que el audio se saca de ella (ver fixSyncInOffer) y la
   // sincronización la hace esta página.
   //
   // Antes se retrasaba la imagen un valor FIJO (200 ms), pero el retraso real de
@@ -575,7 +576,17 @@
   // directamente cuánto hay que retrasar el sonido (o, si el sonido ya va lento
   // de por sí, la imagen) para que la diferencia sea justo la del móvil. Ambos
   // viajan por la misma conexión, así que el retraso de la red es el mismo.
-  const VIDEO_PIPELINE_EXTRA_MS = 220;
+  // Cuánto más tarde que el sonido sale la imagen del móvil, según la fuente.
+  const VIDEO_PIPELINE_MS = { BACK_CAMERA: 220, FRONT_CAMERA: -130, SCREEN: 0 };
+  // Versiones de la app que aún no dicen la fuente: emitían con la trasera.
+  let videoPipelineMs = VIDEO_PIPELINE_MS.BACK_CAMERA;
+  function setVideoSource(source) {
+    const ms = VIDEO_PIPELINE_MS[source];
+    if (ms === undefined || ms === videoPipelineMs) return;
+    videoPipelineMs = ms;
+    gapBias = 0;
+    realGap = null;
+  }
   // Lo que tarda ESTE dispositivo en sacar el sonido por altavoces o auriculares
   // (en Bluetooth puede pasar de 200 ms). Ese retraso no aparece en getStats,
   // así que se mide aparte y se descuenta: si no, el sonido se oye por detrás.
@@ -663,10 +674,14 @@
       // Sin medida (aún no llega nada, o el navegador no da estas estadísticas):
       // mientras tanto, se retrasa el sonido lo que la imagen tarda de más en
       // salir del móvil, que es mejor que nada.
-      if (!syncMeasured && ++syncTicksWithoutData >= 5 && audioTargetMs !== VIDEO_PIPELINE_EXTRA_MS) {
-        videoTargetMs = 0;
-        audioTargetMs = VIDEO_PIPELINE_EXTRA_MS;
-        applyAvOffset();
+      if (!syncMeasured && ++syncTicksWithoutData >= 5) {
+        const gap = videoPipelineMs - outputLatencyMs;
+        const a = Math.max(0, gap), v = Math.max(0, -gap);
+        if (a !== audioTargetMs || v !== videoTargetMs) {
+          audioTargetMs = a;
+          videoTargetMs = v;
+          applyAvOffset();
+        }
       }
       return;
     }
@@ -679,16 +694,17 @@
     const videoNow = videoTargetMs === 0 ? video.real : video.nat;
     natural.video = natural.video === null ? videoNow : natural.video * 0.7 + videoNow * 0.3;
 
-    // El sonido tiene que esperar aquí VIDEO_PIPELINE_EXTRA_MS más que la imagen.
+    // El sonido tiene que esperar aquí videoPipelineMs más que la imagen (si es
+    // negativo, es la imagen la que tiene que esperar más).
     // Se compara con la diferencia que se está consiguiendo de verdad y se va
     // corrigiendo poco a poco lo que se pide (el audio se adapta despacio).
     const gapNow = audio.real - video.real;
     realGap = realGap === null ? gapNow : realGap * 0.8 + gapNow * 0.2;
     if (audioTargetMs > 0 || videoTargetMs > 0) {
-      gapBias += 0.15 * ((VIDEO_PIPELINE_EXTRA_MS - outputLatencyMs) - realGap);
+      gapBias += 0.15 * ((videoPipelineMs - outputLatencyMs) - realGap);
       gapBias = Math.max(-150, Math.min(150, gapBias));
     }
-    const targetGap = VIDEO_PIPELINE_EXTRA_MS - outputLatencyMs;
+    const targetGap = videoPipelineMs - outputLatencyMs;
     const wantedGap = targetGap + gapBias;
     let newAudio = 0, newVideo = 0;
     if (natural.audio - natural.video < wantedGap) {
@@ -700,7 +716,7 @@
     newVideo = Math.round(Math.min(MAX_TARGET_MS, newVideo));
 
     const h = window.__qsSync.history;
-    h.push({ t: Date.now(), natA: Math.round(audio.nat), natV: Math.round(video.nat), realA: Math.round(audio.real), realV: Math.round(video.real), aT: audioTargetMs, vT: videoTargetMs, gap: Math.round(realGap), bias: Math.round(gapBias), out: outputLatencyMs });
+    h.push({ t: Date.now(), natA: Math.round(audio.nat), natV: Math.round(video.nat), realA: Math.round(audio.real), realV: Math.round(video.real), aT: audioTargetMs, vT: videoTargetMs, gap: Math.round(realGap), bias: Math.round(gapBias), out: outputLatencyMs, pipe: videoPipelineMs });
     if (h.length > 300) h.shift();
     if (syncDebug) console.log('[sync] natural', Math.round(audio.nat), Math.round(video.nat), '· real', Math.round(audio.real), Math.round(video.real), '· targets', audioTargetMs, videoTargetMs);
 
@@ -904,6 +920,7 @@
         // AHORA MISMO, tanto al conectarnos como cada vez que cambia en caliente.
         knownHasVideo = !!msg.hasVideo;
         knownHasAudio = !!msg.hasAudio;
+        if (msg.source) setVideoSource(msg.source);
         updateSignalBadges();
         return;
       }

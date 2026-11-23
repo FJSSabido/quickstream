@@ -162,8 +162,12 @@ class SignalingClient(
      * conectados (para avisar de un cambio en caliente); con [viewerId], solo a ese
      * espectador en concreto (para ponerlo al día justo al conectarse).
      */
-    fun sendState(hasVideo: Boolean, hasAudio: Boolean, viewerId: String? = null) {
+    fun sendState(hasVideo: Boolean, hasAudio: Boolean, source: String, viewerId: String? = null) {
+        // "source" (FRONT_CAMERA, BACK_CAMERA, SCREEN, NONE): el visor lo usa para
+        // sincronizar sonido e imagen, porque cada cámara tarda distinto en sacar
+        // la imagen (ver VIDEO_PIPELINE_MS en watch.html).
         val json = JSONObject().put("type", "state").put("hasVideo", hasVideo).put("hasAudio", hasAudio)
+            .put("source", source)
         if (viewerId != null) json.put("viewerId", viewerId)
         send(json)
     }

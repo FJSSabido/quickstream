@@ -268,7 +268,8 @@ object BroadcastEngine {
         // si más adelante cambia, ya lo cubre broadcastState() avisando a todos.
         val s = stateFlow.value
         signalingClient?.sendState(
-            hasVideo = s.activeSource != VideoSource.NONE, hasAudio = s.micEnabled, viewerId = viewerId
+            hasVideo = s.activeSource != VideoSource.NONE, hasAudio = s.micEnabled,
+            source = s.activeSource.name, viewerId = viewerId
         )
     }
 
@@ -348,7 +349,9 @@ object BroadcastEngine {
      */
     private fun broadcastState() {
         val s = stateFlow.value
-        signalingClient?.sendState(hasVideo = s.activeSource != VideoSource.NONE, hasAudio = s.micEnabled)
+        signalingClient?.sendState(
+            hasVideo = s.activeSource != VideoSource.NONE, hasAudio = s.micEnabled, source = s.activeSource.name
+        )
     }
 
     fun setMicEnabled(enabled: Boolean) {
