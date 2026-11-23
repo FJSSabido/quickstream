@@ -87,9 +87,15 @@ La cámara emite con la mejor calidad que permite tu móvil (hasta 4K) y se adap
 </details>
 
 <details>
+<summary><b>La voz no coincide con los labios</b></summary>
+<br>
+La página del espectador sincroniza sola el sonido y la imagen: tiene en cuenta qué cámara estás usando (frontal o trasera), lo que tarda la red y lo que tarda el propio dispositivo en sacar el sonido. Si notas desfase, comprueba que tienes la <b>versión 1.2 o posterior</b> de la app (las anteriores no le dicen al espectador qué cámara usas) y pide a quien te ve que recargue la página. Con auriculares Bluetooth puede quedar un pequeño desfase, porque algunos no informan bien de su retraso.
+</details>
+
+<details>
 <summary><b>¿Cómo la actualizo a una versión nueva?</b></summary>
 <br>
-Escanea el mismo código QR y vuelve a instalar.
+Escanea el mismo código QR y vuelve a instalar. Siempre descarga la última versión.
 </details>
 
 ## Colores
@@ -118,7 +124,7 @@ El vídeo y el audio van por **WebRTC peer-to-peer**. El servidor solo presenta 
 
 1. Abre `android-app/` en Android Studio (*File → Open*) y espera al *Gradle Sync*.
 2. *Build → Build APK(s)*, o desde terminal: `./gradlew assembleDebug`. El APK queda en `android-app/app/build/outputs/apk/debug/app-debug.apk`.
-3. Para publicar una versión nueva, renombra el APK a `QuickStream.apk` y súbelo como archivo de una *release* de GitHub. El QR y el botón de descarga siempre apuntan a la última release.
+3. Para publicar una versión nueva, sube `versionCode` y `versionName` en `app/build.gradle.kts`, copia el APK a la raíz como `QuickStream.apk` y crea una *release* de GitHub con él, por ejemplo `gh release create v1.3 QuickStream.apk`. El QR y el botón de descarga siempre apuntan a la última release.
 
 La app usa por defecto el servidor de `DEFAULT_SERVER_URL` (en `MainActivity.kt`) y genera una sala aleatoria que se guarda entre usos. La tarjeta de conexión (servidor, sala y contraseña) sigue en el layout, oculta (`cardConnection`), por si hace falta volver a mostrarla.
 
@@ -132,6 +138,7 @@ En Render.com (gratis): *New → Web Service*, root directory `server`, build `n
 
 - **Calidad de imagen:** se captura hasta 4K. El techo de bitrate sube con la resolución (de 2,5 a 20 Mbps) y WebRTC equilibra nitidez y fluidez cuando la red no da. El techo de captura está en `MAX_CAPTURE_WIDTH`/`MAX_CAPTURE_HEIGHT` (`WebRtcClient.kt`).
 - **Audio:** cancelación de eco, control de ganancia, supresión de ruido y filtro de graves. Opus va con bitrate alto, `useinbandfec` activado y `usedtx` desactivado.
+- **Sincronización audio/imagen:** la hace `watch.html`, no WebRTC (el audio va en otro grupo de sincronización; ver `fixSyncInOffer`). Cada segundo lee de `getStats` el retraso natural de cada búfer de recepción y fija `jitterBufferTarget` del audio o del vídeo para mantener la diferencia correcta, corrigiendo con la diferencia real conseguida. Cada cámara tarda distinto en sacar la imagen respecto al sonido (`VIDEO_PIPELINE_MS`: trasera +220 ms, frontal −130 ms, medido en un OnePlus con destellos y pitidos), y la app manda la fuente activa en el mensaje `state`. También se descuenta la latencia de salida de audio del dispositivo (`AudioContext.outputLatency`). Para depurar, abre el visor con `?debug=sync`. La pantalla compartida aún no está calibrada (0 ms).
 - **Safari:** `watch.html` incluye el arreglo para páginas que solo reciben vídeo, que si no se quedan sin conectar.
 - **Una sala = un móvil emitiendo**, con varios espectadores a la vez. La contraseña de sala (si se usa) es una protección básica, no cifrado.
 - **Dependencia WebRTC:** `io.github.webrtc-sdk:android` en `app/build.gradle.kts`. Si una versión deja de existir, usa la más reciente de mvnrepository.
