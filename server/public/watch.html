@@ -558,26 +558,152 @@
   });
 
   // --- Sincronización audio / imagen -------------------------------------------
-  // El micrófono del móvil tarda algo más en entregar el sonido que la cámara en
-  // entregar la imagen (búferes y procesado de audio del propio teléfono), así que
-  // el sonido llega con algo de retraso respecto a la imagen. La sincronización
-  // automática de WebRTC no lo puede corregir, porque se basa en las marcas de
-  // tiempo que pone el móvil, y el sonido ya sale marcado tarde. Por eso aquí se
-  // separa el audio de esa sincronización automática (ver fixSyncInOffer) y se
-  // retrasa la IMAGEN a propósito un valor fijo (AV_OFFSET_MS, comprobado a
-  // mano: con 200 ms la voz coincide con los labios) para que vuelva a coincidir
-  // con el sonido.
-  const AV_OFFSET_MS = 200;
+  // En el móvil, la imagen tarda bastante más que el sonido en salir: cámara,
+  // procesado y codificación H.264 frente a unos pocos milisegundos de audio
+  // (VIDEO_PIPELINE_EXTRA_MS, medido con destellos y pitidos grabados por el
+  // móvil: ~220 ms). La sincronización automática de WebRTC no lo corrige del
+  // todo, así que el audio se saca de ella (ver fixSyncInOffer) y la
+  // sincronización la hace esta página.
+  //
+  // Antes se retrasaba la imagen un valor FIJO (200 ms), pero el retraso real de
+  // cada uno cambia sobre la marcha (red, decodificar 4K, el búfer de audio, que
+  // se adapta solo…), y con un valor fijo audio e imagen se iban desacoplando.
+  // Ahora se MIDE cada segundo cuánto necesita esperar de forma natural cada uno
+  // en esta página (lo que el propio búfer de recepción pediría sin nuestro
+  // ajuste, más la decodificación en el caso de la imagen; getStats) y se fija
+  // directamente cuánto hay que retrasar el sonido (o, si el sonido ya va lento
+  // de por sí, la imagen) para que la diferencia sea justo la del móvil. Ambos
+  // viajan por la misma conexión, así que el retraso de la red es el mismo.
+  const VIDEO_PIPELINE_EXTRA_MS = 220;
+  const SYNC_MIN_CHANGE_MS = 25;
+  const MAX_TARGET_MS = 1500;
   let videoReceiver = null;
+  let audioReceiver = null;
+  let videoTargetMs = 0;
+  let audioTargetMs = 0;
+  let syncTimer = null;
+  let syncMeasured = false;
+  let syncTicksWithoutData = 0;
+  let prevStats = {};
+  const natural = { audio: null, video: null };
+  // Corrección acumulada: el búfer de audio no siempre llega del todo al retraso
+  // pedido, así que se ajusta lo pedido hasta que la diferencia REAL sea la buena.
+  let gapBias = 0;
+  let realGap = null;
+  const syncDebug = /[?&]debug=sync(&|$)/.test(location.search);
+  window.__qsSync = { history: [] }; // para inspeccionar la sincronización
   const canDelayVideo = typeof RTCRtpReceiver !== 'undefined' &&
     ('jitterBufferTarget' in RTCRtpReceiver.prototype || 'playoutDelayHint' in RTCRtpReceiver.prototype);
 
-  function applyAvOffset() {
-    if (!videoReceiver) return;
+  function setReceiverDelay(receiver, ms) {
+    if (!receiver) return;
     try {
-      if ('jitterBufferTarget' in videoReceiver) videoReceiver.jitterBufferTarget = AV_OFFSET_MS;
-      else videoReceiver.playoutDelayHint = AV_OFFSET_MS / 1000;
+      if ('jitterBufferTarget' in receiver) receiver.jitterBufferTarget = ms;
+      else receiver.playoutDelayHint = ms / 1000;
     } catch (e) { /* ignorar */ }
+  }
+
+  function applyAvOffset() {
+    setReceiverDelay(videoReceiver, videoTargetMs);
+    setReceiverDelay(audioReceiver, audioTargetMs);
+  }
+
+  // Del último segundo: retraso natural (ms) que pediría el búfer de este
+  // receptor sin nuestro ajuste, y el que ha tenido de verdad (para depurar).
+  // En la imagen se suma lo que tarda en decodificarse.
+  function recentDelays(s) {
+    const prev = prevStats[s.kind];
+    prevStats[s.kind] = s;
+    if (!prev || s.jitterBufferMinimumDelay === undefined) return null;
+    const emitted = s.jitterBufferEmittedCount - prev.jitterBufferEmittedCount;
+    if (emitted <= 0) return null;
+    let nat = 1000 * (s.jitterBufferMinimumDelay - prev.jitterBufferMinimumDelay) / emitted;
+    let real = 1000 * (s.jitterBufferDelay - prev.jitterBufferDelay) / emitted;
+    if (s.kind === 'video' && s.totalDecodeTime !== undefined) {
+      const decoded = s.framesDecoded - prev.framesDecoded;
+      if (decoded > 0) {
+        const dec = 1000 * (s.totalDecodeTime - prev.totalDecodeTime) / decoded;
+        nat += dec; real += dec;
+      }
+    }
+    return { nat, real };
+  }
+
+  async function syncTick() {
+    if (!pc || !videoReceiver || !audioReceiver) return;
+    let audio = null, video = null;
+    try {
+      const stats = await pc.getStats();
+      stats.forEach((s) => {
+        if (s.type !== 'inbound-rtp') return;
+        if (s.kind === 'audio') audio = recentDelays(s);
+        else if (s.kind === 'video') video = recentDelays(s);
+      });
+    } catch (e) { return; }
+
+    if (audio === null || video === null) {
+      // Sin medida (aún no llega nada, o el navegador no da estas estadísticas):
+      // mientras tanto, se retrasa el sonido lo que la imagen tarda de más en
+      // salir del móvil, que es mejor que nada.
+      if (!syncMeasured && ++syncTicksWithoutData >= 5 && audioTargetMs !== VIDEO_PIPELINE_EXTRA_MS) {
+        videoTargetMs = 0;
+        audioTargetMs = VIDEO_PIPELINE_EXTRA_MS;
+        applyAvOffset();
+      }
+      return;
+    }
+    syncMeasured = true;
+
+    // Media móvil para no reaccionar a cada pico suelto de la red.
+    natural.audio = natural.audio === null ? audio.nat : natural.audio * 0.7 + audio.nat * 0.3;
+    // Para la imagen, mientras no la estemos retrasando, su retraso real es la
+    // mejor medida (el "natural" que da el navegador para vídeo es más impreciso).
+    const videoNow = videoTargetMs === 0 ? video.real : video.nat;
+    natural.video = natural.video === null ? videoNow : natural.video * 0.7 + videoNow * 0.3;
+
+    // El sonido tiene que esperar aquí VIDEO_PIPELINE_EXTRA_MS más que la imagen.
+    // Se compara con la diferencia que se está consiguiendo de verdad y se va
+    // corrigiendo poco a poco lo que se pide (el audio se adapta despacio).
+    const gapNow = audio.real - video.real;
+    realGap = realGap === null ? gapNow : realGap * 0.8 + gapNow * 0.2;
+    if (audioTargetMs > 0 || videoTargetMs > 0) {
+      gapBias += 0.15 * (VIDEO_PIPELINE_EXTRA_MS - realGap);
+      gapBias = Math.max(-150, Math.min(150, gapBias));
+    }
+    const wantedGap = VIDEO_PIPELINE_EXTRA_MS + gapBias;
+    let newAudio = 0, newVideo = 0;
+    if (natural.audio - natural.video < wantedGap) {
+      newAudio = natural.video + wantedGap;  // lo normal: retrasar el sonido
+    } else {
+      newVideo = natural.audio - wantedGap;  // el sonido ya va lento: retrasar la imagen
+    }
+    newAudio = Math.round(Math.min(MAX_TARGET_MS, newAudio));
+    newVideo = Math.round(Math.min(MAX_TARGET_MS, newVideo));
+
+    const h = window.__qsSync.history;
+    h.push({ t: Date.now(), natA: Math.round(audio.nat), natV: Math.round(video.nat), realA: Math.round(audio.real), realV: Math.round(video.real), aT: audioTargetMs, vT: videoTargetMs, gap: Math.round(realGap), bias: Math.round(gapBias) });
+    if (h.length > 300) h.shift();
+    if (syncDebug) console.log('[sync] natural', Math.round(audio.nat), Math.round(video.nat), '· real', Math.round(audio.real), Math.round(video.real), '· targets', audioTargetMs, videoTargetMs);
+
+    if (Math.abs(newAudio - audioTargetMs) >= SYNC_MIN_CHANGE_MS || Math.abs(newVideo - videoTargetMs) >= SYNC_MIN_CHANGE_MS) {
+      audioTargetMs = newAudio;
+      videoTargetMs = newVideo;
+      applyAvOffset();
+    }
+  }
+
+  function startSyncLoop() {
+    clearInterval(syncTimer);
+    syncMeasured = false;
+    syncTicksWithoutData = 0;
+    prevStats = {};
+    natural.audio = natural.video = null;
+    gapBias = 0;
+    realGap = null;
+    videoTargetMs = 0;
+    audioTargetMs = 0;
+    window.__qsSync.history = [];
+    if (canDelayVideo) syncTimer = setInterval(syncTick, 1000);
   }
 
   // Saca la pista de audio del "grupo de sincronización" de la imagen cambiando
@@ -805,7 +931,10 @@
     if (pc) pc.close();
     remoteStream = new MediaStream();
     videoReceiver = null;
+    audioReceiver = null;
     pc = new RTCPeerConnection(rtcConfig);
+    if (syncDebug) window.__qsSync.pc = pc;
+    startSyncLoop();
 
     // Safari/WebKit tiene un fallo conocido con conexiones que SOLO reciben
     // (como esta página: nunca manda cámara ni micrófono propios) — a veces no
@@ -843,10 +972,9 @@
       tracks.push(ev.track);
       remoteStream = new MediaStream(tracks);
       videoEl.srcObject = remoteStream;
-      if (ev.track.kind === 'video') {
-        videoReceiver = ev.receiver;
-        applyAvOffset();
-      }
+      if (ev.track.kind === 'video') videoReceiver = ev.receiver;
+      else audioReceiver = ev.receiver;
+      applyAvOffset();
       if (knownHasVideo === null && ev.track.kind === 'video') {
         knownHasVideo = true;
         updateSignalBadges();
