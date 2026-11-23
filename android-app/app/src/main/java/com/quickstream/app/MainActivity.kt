@@ -93,6 +93,13 @@ class MainActivity : AppCompatActivity() {
         binding.btnRegenRoom.setOnClickListener {
             binding.inputRoomId.setText(randomRoomId())
         }
+        binding.btnNewLink.setOnClickListener {
+            if (BroadcastEngine.stateFlow.value.isRunning || pendingStart) return@setOnClickListener
+            binding.inputRoomId.setText(randomRoomId())
+            savePrefs()
+            showPreviewLink()
+            Toast.makeText(this, "Enlace nuevo creado", Toast.LENGTH_SHORT).show()
+        }
 
         binding.btnSourceFront.setOnClickListener { onSourceButtonClicked(VideoSource.FRONT_CAMERA) }
         binding.btnSourceBack.setOnClickListener { onSourceButtonClicked(VideoSource.BACK_CAMERA) }
@@ -109,14 +116,14 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.btnCopyUrl.setOnClickListener {
-            val url = BroadcastEngine.stateFlow.value.viewerUrl ?: return@setOnClickListener
+            val url = currentLink()
             val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             cm.setPrimaryClip(ClipData.newPlainText("URL", url))
             Toast.makeText(this, "Enlace copiado", Toast.LENGTH_SHORT).show()
         }
 
         binding.btnShareUrl.setOnClickListener {
-            val url = BroadcastEngine.stateFlow.value.viewerUrl ?: return@setOnClickListener
+            val url = currentLink()
             val intent = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
                 putExtra(Intent.EXTRA_TEXT, url)
@@ -142,6 +149,7 @@ class MainActivity : AppCompatActivity() {
 
         updateSourceButtonStates()
         updateAudioButtonStates()
+        if (!BroadcastEngine.stateFlow.value.isRunning) showPreviewLink()
         observeState()
         observeChat()
     }
@@ -291,6 +299,24 @@ class MainActivity : AppCompatActivity() {
             .apply()
     }
 
+    /** Enlace que verán los espectadores: el de la emisión en marcha o, si no
+     *  hay ninguna, el que tendrá la próxima (servidor + sala guardados). */
+    private fun currentLink(): String =
+        BroadcastEngine.stateFlow.value.viewerUrl ?: BroadcastEngine.buildViewerUrl(
+            binding.inputServerUrl.text?.toString()?.trim().orEmpty(),
+            binding.inputRoomId.text?.toString()?.trim().orEmpty()
+        )
+
+    /** Muestra, antes de emitir, el enlace y el QR de la próxima transmisión. */
+    private fun showPreviewLink() {
+        val url = currentLink()
+        binding.cardShare.visibility = android.view.View.VISIBLE
+        binding.btnNewLink.visibility = android.view.View.VISIBLE
+        binding.txtViewerUrl.text = url
+        binding.txtViewerCount.text = ""
+        loadQrIfNeeded(url)
+    }
+
     private fun randomRoomId(): String {
         val chars = "abcdefghijkmnpqrstuvwxyz23456789"
         return (1..6).map { chars.random() }.joinToString("")
@@ -400,7 +426,26 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * La emisión sigue en segundo plano hasta que se detiene a mano, pero algunos
+     * móviles (OnePlus, OPPO, Xiaomi…) cierran igualmente las apps "que gastan
+     * batería" al rato. Se pide una vez al sistema que no la optimice.
+     */
+    private fun askToIgnoreBatteryOptimizationsOnce() {
+        if (prefs.getBoolean("askedBattery", false)) return
+        prefs.edit().putBoolean("askedBattery", true).apply()
+        val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+        if (pm.isIgnoringBatteryOptimizations(packageName)) return
+        try {
+            startActivity(
+                Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                    .setData(android.net.Uri.parse("package:$packageName"))
+            )
+        } catch (e: Exception) { /* sin ese ajuste, seguimos igual */ }
+    }
+
     private fun proceedAfterPermissions() {
+        askToIgnoreBatteryOptimizationsOnce()
         if (pendingSource == VideoSource.SCREEN) {
             requestScreenPermission(ScreenPermissionPurpose.START)
         } else {
@@ -437,8 +482,7 @@ class MainActivity : AppCompatActivity() {
         setInputsEnabled(true)
         binding.btnStartStop.text = "Iniciar transmisión"
         tintButton(binding.btnStartStop, on = false)
-        binding.cardShare.visibility = android.view.View.GONE
-        binding.txtViewerCount.text = ""
+        showPreviewLink()
     }
 
     private fun setInputsEnabled(enabled: Boolean) {
@@ -502,6 +546,7 @@ class MainActivity : AppCompatActivity() {
 
                     if (state.isLive && state.viewerUrl != null) {
                         binding.cardShare.visibility = android.view.View.VISIBLE
+                        binding.btnNewLink.visibility = android.view.View.GONE
                         binding.txtViewerUrl.text = state.viewerUrl
                         binding.txtViewerCount.text = when (state.viewerCount) {
                             0 -> "Nadie está viendo la transmisión todavía"
@@ -521,7 +566,7 @@ class MainActivity : AppCompatActivity() {
                             }, 700)
                         }
                     } else if (!state.isRunning) {
-                        binding.cardShare.visibility = android.view.View.GONE
+                        if (!pendingStart) showPreviewLink()
                         chatLive = false
                         chatHidden = false
                         unreadCount = 0

@@ -559,37 +559,23 @@
   });
 
   // --- Sincronización audio / imagen -------------------------------------------
-  // En el móvil, imagen y sonido no tardan lo mismo en salir, y depende de la
-  // cámara: la trasera (más procesado) saca la imagen ~220 ms DESPUÉS que el
-  // sonido; la frontal, ~130 ms ANTES (medido en un OnePlus con destellos y
-  // pitidos grabados por el móvil). La app dice qué fuente está emitiendo
-  // (msg.source en el mensaje 'state'). La sincronización automática de WebRTC
-  // no lo corrige, así que el audio se saca de ella (ver fixSyncInOffer) y la
-  // sincronización la hace esta página.
-  //
-  // Antes se retrasaba la imagen un valor FIJO (200 ms), pero el retraso real de
-  // cada uno cambia sobre la marcha (red, decodificar 4K, el búfer de audio, que
-  // se adapta solo…), y con un valor fijo audio e imagen se iban desacoplando.
-  // Ahora se MIDE cada segundo cuánto necesita esperar de forma natural cada uno
-  // en esta página (lo que el propio búfer de recepción pediría sin nuestro
-  // ajuste, más la decodificación en el caso de la imagen; getStats) y se fija
-  // directamente cuánto hay que retrasar el sonido (o, si el sonido ya va lento
-  // de por sí, la imagen) para que la diferencia sea justo la del móvil. Ambos
-  // viajan por la misma conexión, así que el retraso de la red es el mismo.
-  // Cuánto más tarde que el sonido sale la imagen del móvil, según la fuente.
-  const VIDEO_PIPELINE_MS = { BACK_CAMERA: 220, FRONT_CAMERA: -130, SCREEN: 0 };
-  // Versiones de la app que aún no dicen la fuente: emitían con la trasera.
-  let videoPipelineMs = VIDEO_PIPELINE_MS.BACK_CAMERA;
-  function setVideoSource(source) {
-    const ms = VIDEO_PIPELINE_MS[source];
-    if (ms === undefined || ms === videoPipelineMs) return;
-    videoPipelineMs = ms;
-    gapBias = 0;
-    realGap = null;
-  }
+  // WebRTC ya sincroniza por sí solo sonido e imagen según el momento en que se
+  // captó cada uno en el móvil, y eso no depende de la cámara, la resolución, la
+  // red ni lo que tarde en codificarse. Pero el micrófono del móvil entrega el
+  // sonido tarde (su propio búfer: ~270-290 ms con cualquier cámara, MIC_LATENCY_MS, medido con destellos
+  // y pitidos grabados por el móvil), y además este dispositivo tarda un poco en
+  // sacar el sonido por altavoces/auriculares. Así que la IMAGEN se muestra ese
+  // tiempo después de recibirla: cada fotograma pasa por una pequeña cola antes
+  // de llegar al <video> (MediaStreamTrackProcessor/Generator, de Chrome/Edge).
+  // En navegadores sin eso, queda solo la sincronización de WebRTC.
+  const MIC_LATENCY_MS = 285;
+  const canDelayFrames = typeof MediaStreamTrackProcessor !== 'undefined' &&
+    typeof MediaStreamTrackGenerator !== 'undefined';
+  const syncDebug = /[?&]debug=sync(&|$)/.test(location.search);
+  window.__qsSync = { history: [] }; // para inspeccionar la sincronización
+
   // Lo que tarda ESTE dispositivo en sacar el sonido por altavoces o auriculares
-  // (en Bluetooth puede pasar de 200 ms). Ese retraso no aparece en getStats,
-  // así que se mide aparte y se descuenta: si no, el sonido se oye por detrás.
+  // (en Bluetooth puede pasar de 200 ms). Se mide al tocar Reproducir.
   let outputLatencyMs = 40; // valor típico mientras no se pueda medir
   let outputLatencyMeasured = false;
   async function measureOutputLatency() {
@@ -604,154 +590,60 @@
       ac.close();
     } catch (e) { /* nos quedamos con el valor típico */ }
   }
-  const SYNC_MIN_CHANGE_MS = 25;
-  const MAX_TARGET_MS = 1500;
-  let videoReceiver = null;
-  let audioReceiver = null;
-  let videoTargetMs = 0;
-  let audioTargetMs = 0;
-  let syncTimer = null;
-  let syncMeasured = false;
-  let syncTicksWithoutData = 0;
-  let prevStats = {};
-  const natural = { audio: null, video: null };
-  // Corrección acumulada: el búfer de audio no siempre llega del todo al retraso
-  // pedido, así que se ajusta lo pedido hasta que la diferencia REAL sea la buena.
-  let gapBias = 0;
-  let realGap = null;
-  const syncDebug = /[?&]debug=sync(&|$)/.test(location.search);
-  window.__qsSync = { history: [] }; // para inspeccionar la sincronización
-  const canDelayVideo = typeof RTCRtpReceiver !== 'undefined' &&
-    ('jitterBufferTarget' in RTCRtpReceiver.prototype || 'playoutDelayHint' in RTCRtpReceiver.prototype);
 
-  function setReceiverDelay(receiver, ms) {
-    if (!receiver) return;
-    try {
-      if ('jitterBufferTarget' in receiver) receiver.jitterBufferTarget = ms;
-      else receiver.playoutDelayHint = ms / 1000;
-    } catch (e) { /* ignorar */ }
+  function videoDelayMs() {
+    return MIC_LATENCY_MS + outputLatencyMs;
   }
 
-  function applyAvOffset() {
-    setReceiverDelay(videoReceiver, videoTargetMs);
-    setReceiverDelay(audioReceiver, audioTargetMs);
-  }
+  // Devuelve una pista de vídeo que es la recibida, pero videoDelayMs() más tarde.
+  let stopFrameDelay = null;
+  function delayVideoTrack(track) {
+    if (stopFrameDelay) stopFrameDelay();
+    const processor = new MediaStreamTrackProcessor({ track });
+    const generator = new MediaStreamTrackGenerator({ kind: 'video' });
+    const reader = processor.readable.getReader();
+    const writer = generator.writable.getWriter();
+    const queue = [];
+    let stopped = false;
+    let timer = null;
 
-  // Del último segundo: retraso natural (ms) que pediría el búfer de este
-  // receptor sin nuestro ajuste, y el que ha tenido de verdad (para depurar).
-  // En la imagen se suma lo que tarda en decodificarse.
-  function recentDelays(s) {
-    const prev = prevStats[s.kind];
-    prevStats[s.kind] = s;
-    if (!prev || s.jitterBufferMinimumDelay === undefined) return null;
-    const emitted = s.jitterBufferEmittedCount - prev.jitterBufferEmittedCount;
-    if (emitted <= 0) return null;
-    let nat = 1000 * (s.jitterBufferMinimumDelay - prev.jitterBufferMinimumDelay) / emitted;
-    let real = 1000 * (s.jitterBufferDelay - prev.jitterBufferDelay) / emitted;
-    if (s.kind === 'video' && s.totalDecodeTime !== undefined) {
-      const decoded = s.framesDecoded - prev.framesDecoded;
-      if (decoded > 0) {
-        const dec = 1000 * (s.totalDecodeTime - prev.totalDecodeTime) / decoded;
-        nat += dec; real += dec;
+    function pump() {
+      timer = null;
+      const now = performance.now();
+      while (queue.length && queue[0].at <= now) {
+        const { frame } = queue.shift();
+        writer.write(frame).catch(() => { try { frame.close(); } catch (e) { /* ignorar */ } });
       }
+      if (queue.length && !stopped) timer = setTimeout(pump, Math.max(1, queue[0].at - now));
     }
-    return { nat, real };
-  }
 
-  async function syncTick() {
-    if (!pc || !videoReceiver || !audioReceiver) return;
-    let audio = null, video = null;
-    try {
-      const stats = await pc.getStats();
-      stats.forEach((s) => {
-        if (s.type !== 'inbound-rtp') return;
-        if (s.kind === 'audio') audio = recentDelays(s);
-        else if (s.kind === 'video') video = recentDelays(s);
-      });
-    } catch (e) { return; }
-
-    if (audio === null || video === null) {
-      // Sin medida (aún no llega nada, o el navegador no da estas estadísticas):
-      // mientras tanto, se retrasa el sonido lo que la imagen tarda de más en
-      // salir del móvil, que es mejor que nada.
-      if (!syncMeasured && ++syncTicksWithoutData >= 5) {
-        const gap = videoPipelineMs - outputLatencyMs;
-        const a = Math.max(0, gap), v = Math.max(0, -gap);
-        if (a !== audioTargetMs || v !== videoTargetMs) {
-          audioTargetMs = a;
-          videoTargetMs = v;
-          applyAvOffset();
+    (async () => {
+      while (!stopped) {
+        let result;
+        try { result = await reader.read(); } catch (e) { break; }
+        if (result.done) break;
+        queue.push({ frame: result.value, at: performance.now() + videoDelayMs() });
+        // Por si la pestaña se queda en segundo plano y los temporizadores se
+        // frenan: no acumular más de ~3 s de imagen.
+        while (queue.length > 90) queue.shift().frame.close();
+        if (syncDebug && Math.random() < 0.05) {
+          const h = window.__qsSync.history;
+          h.push({ t: Date.now(), delay: videoDelayMs(), queued: queue.length });
+          if (h.length > 300) h.shift();
         }
+        if (!timer) pump();
       }
-      return;
-    }
-    syncMeasured = true;
+    })();
 
-    // Media móvil para no reaccionar a cada pico suelto de la red.
-    natural.audio = natural.audio === null ? audio.nat : natural.audio * 0.7 + audio.nat * 0.3;
-    // Para la imagen, mientras no la estemos retrasando, su retraso real es la
-    // mejor medida (el "natural" que da el navegador para vídeo es más impreciso).
-    const videoNow = videoTargetMs === 0 ? video.real : video.nat;
-    natural.video = natural.video === null ? videoNow : natural.video * 0.7 + videoNow * 0.3;
-
-    // El sonido tiene que esperar aquí videoPipelineMs más que la imagen (si es
-    // negativo, es la imagen la que tiene que esperar más).
-    // Se compara con la diferencia que se está consiguiendo de verdad y se va
-    // corrigiendo poco a poco lo que se pide (el audio se adapta despacio).
-    const gapNow = audio.real - video.real;
-    realGap = realGap === null ? gapNow : realGap * 0.8 + gapNow * 0.2;
-    if (audioTargetMs > 0 || videoTargetMs > 0) {
-      gapBias += 0.15 * ((videoPipelineMs - outputLatencyMs) - realGap);
-      gapBias = Math.max(-150, Math.min(150, gapBias));
-    }
-    const targetGap = videoPipelineMs - outputLatencyMs;
-    const wantedGap = targetGap + gapBias;
-    let newAudio = 0, newVideo = 0;
-    if (natural.audio - natural.video < wantedGap) {
-      newAudio = natural.video + wantedGap;  // lo normal: retrasar el sonido
-    } else {
-      newVideo = natural.audio - wantedGap;  // el sonido ya va lento: retrasar la imagen
-    }
-    newAudio = Math.round(Math.min(MAX_TARGET_MS, newAudio));
-    newVideo = Math.round(Math.min(MAX_TARGET_MS, newVideo));
-
-    const h = window.__qsSync.history;
-    h.push({ t: Date.now(), natA: Math.round(audio.nat), natV: Math.round(video.nat), realA: Math.round(audio.real), realV: Math.round(video.real), aT: audioTargetMs, vT: videoTargetMs, gap: Math.round(realGap), bias: Math.round(gapBias), out: outputLatencyMs, pipe: videoPipelineMs });
-    if (h.length > 300) h.shift();
-    if (syncDebug) console.log('[sync] natural', Math.round(audio.nat), Math.round(video.nat), '· real', Math.round(audio.real), Math.round(video.real), '· targets', audioTargetMs, videoTargetMs);
-
-    if (Math.abs(newAudio - audioTargetMs) >= SYNC_MIN_CHANGE_MS || Math.abs(newVideo - videoTargetMs) >= SYNC_MIN_CHANGE_MS) {
-      audioTargetMs = newAudio;
-      videoTargetMs = newVideo;
-      applyAvOffset();
-    }
-  }
-
-  function startSyncLoop() {
-    clearInterval(syncTimer);
-    syncMeasured = false;
-    syncTicksWithoutData = 0;
-    prevStats = {};
-    natural.audio = natural.video = null;
-    gapBias = 0;
-    realGap = null;
-    videoTargetMs = 0;
-    audioTargetMs = 0;
-    window.__qsSync.history = [];
-    if (canDelayVideo) syncTimer = setInterval(syncTick, 1000);
-  }
-
-  // Saca la pista de audio del "grupo de sincronización" de la imagen cambiando
-  // su identificador de stream en la oferta (a=msid). Sin esto, WebRTC volvería
-  // a retrasar el audio lo mismo que retrasamos la imagen y no cambiaría nada.
-  function fixSyncInOffer(sdp) {
-    if (!canDelayVideo) return sdp; // sin poder retrasar la imagen, mejor dejar la sincronización automática
-    return sdp.split('\r\nm=').map((section, i) => {
-      if (i > 0 && section.startsWith('audio')) {
-        return section.replace(/msid:main /g, 'msid:qs-audio ');
-      }
-      return section;
-    }).join('\r\nm=');
+    stopFrameDelay = () => {
+      stopped = true;
+      clearTimeout(timer);
+      queue.splice(0).forEach(({ frame }) => frame.close());
+      try { reader.cancel(); } catch (e) { /* ignorar */ }
+      try { generator.stop(); } catch (e) { /* ignorar */ }
+      stopFrameDelay = null;
+    };
+    return generator;
   }
 
   document.addEventListener('fullscreenchange', () => { updateFullscreenIcon(); layoutVideo(); });
@@ -920,7 +812,6 @@
         // AHORA MISMO, tanto al conectarnos como cada vez que cambia en caliente.
         knownHasVideo = !!msg.hasVideo;
         knownHasAudio = !!msg.hasAudio;
-        if (msg.source) setVideoSource(msg.source);
         updateSignalBadges();
         return;
       }
@@ -937,7 +828,7 @@
         hostOnline = true;
         updateChatAvailability();
         setupPeerConnection();
-        await pc.setRemoteDescription({ type: 'offer', sdp: fixSyncInOffer(msg.sdp) });
+        await pc.setRemoteDescription({ type: 'offer', sdp: msg.sdp });
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         ws.send(JSON.stringify({ type: 'answer', sdp: answer.sdp }));
@@ -966,11 +857,9 @@
   function setupPeerConnection() {
     if (pc) pc.close();
     remoteStream = new MediaStream();
-    videoReceiver = null;
-    audioReceiver = null;
+    if (stopFrameDelay) stopFrameDelay();
     pc = new RTCPeerConnection(rtcConfig);
     if (syncDebug) window.__qsSync.pc = pc;
-    startSyncLoop();
 
     // Safari/WebKit tiene un fallo conocido con conexiones que SOLO reciben
     // (como esta página: nunca manda cámara ni micrófono propios) — a veces no
@@ -998,19 +887,20 @@
       // directo" todavía: eso se hace más abajo, en onconnectionstatechange,
       // que es la señal real de que hay conexión de verdad.
       gotStream = true;
-      // Audio e imagen llegan ahora en streams distintos (ver fixSyncInOffer):
-      // se juntan en uno solo para el elemento <video>, sustituyendo la pista
-      // anterior del mismo tipo si la hubiera. Se crea un stream NUEVO y se
-      // vuelve a asignar cada vez: si solo se añadiera la pista al stream que el
-      // <video> ya está reproduciendo, Chrome/Brave pueden no enterarse de ella
-      // (pasaba con el audio, que llega justo después de la imagen: no sonaba).
+      // Audio e imagen se juntan en un stream para el elemento <video>,
+      // sustituyendo la pista anterior del mismo tipo si la hubiera; la imagen
+      // pasa antes por la cola que la retrasa (ver delayVideoTrack). Se crea un
+      // stream NUEVO y se vuelve a asignar cada vez: si solo se añadiera la pista
+      // al stream que el <video> ya está reproduciendo, Chrome/Brave pueden no
+      // enterarse de ella (pasaba con el audio: no sonaba).
+      let shown = ev.track;
+      if (ev.track.kind === 'video' && canDelayFrames) {
+        try { shown = delayVideoTrack(ev.track); } catch (e) { shown = ev.track; }
+      }
       const tracks = remoteStream.getTracks().filter((t) => t.kind !== ev.track.kind);
-      tracks.push(ev.track);
+      tracks.push(shown);
       remoteStream = new MediaStream(tracks);
       videoEl.srcObject = remoteStream;
-      if (ev.track.kind === 'video') videoReceiver = ev.receiver;
-      else audioReceiver = ev.receiver;
-      applyAvOffset();
       if (knownHasVideo === null && ev.track.kind === 'video') {
         knownHasVideo = true;
         updateSignalBadges();

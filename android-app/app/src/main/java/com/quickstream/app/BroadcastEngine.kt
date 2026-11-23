@@ -409,7 +409,7 @@ object BroadcastEngine {
         stateFlow.value = if (errorMessage != null) BroadcastState(error = errorMessage) else BroadcastState()
     }
 
-    private fun buildViewerUrl(serverUrl: String, room: String): String {
+    fun buildViewerUrl(serverUrl: String, room: String): String {
         val base = serverUrl.trim().removeSuffix("/")
         return "$base/watch/${java.net.URLEncoder.encode(room, "UTF-8")}"
     }

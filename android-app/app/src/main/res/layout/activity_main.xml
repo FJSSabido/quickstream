@@ -270,13 +270,38 @@
             android:padding="18dp"
             android:visibility="gone">
 
-            <TextView
-                android:layout_width="wrap_content"
+            <!-- Antes de emitir ya se ve el enlace que se va a usar (para poder
+                 compartirlo con antelación); el dado crea uno nuevo para que cada
+                 transmisión pueda tener su propia URL. Con la emisión en marcha el
+                 dado se oculta: cambiar de sala cortaría a quien ya está viendo. -->
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="🔗 Enlace para ver la transmisión"
-                android:textColor="@color/text_primary"
-                android:textSize="14sp"
-                android:textStyle="bold" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="🔗 Enlace para ver la transmisión"
+                    android:textColor="@color/text_primary"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/btnNewLink"
+                    android:layout_width="wrap_content"
+                    android:layout_height="40dp"
+                    android:layout_marginStart="8dp"
+                    android:background="@drawable/bg_chat_hide"
+                    android:contentDescription="Crear un enlace nuevo"
+                    android:gravity="center"
+                    android:paddingHorizontal="14dp"
+                    android:text="🎲 Nuevo"
+                    android:textColor="@color/text_primary"
+                    android:textSize="13sp" />
+            </LinearLayout>
 
             <TextView
                 android:id="@+id/txtViewerUrl"

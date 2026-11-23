@@ -34,15 +34,19 @@ Quien lo abra te ve en directo desde cualquier navegador, sin instalar nada.</p>
 
 **1. Elige qué quieres emitir.** Toca uno de los botones grandes: **Frontal**, **Trasera** o **Pantalla**. El que está en **amarillo** es el que está encendido; los **morados** están apagados. El botón **Micrófono** funciona igual.
 
-**2. Toca «Iniciar transmisión».** La primera vez te pedirá permiso para usar la cámara, el micrófono y las notificaciones: acepta los tres. Si eliges *Pantalla*, el móvil te preguntará también si quieres compartir la pantalla entera o solo una app.
+**2. Prepara el enlace.** Debajo ya ves el enlace y el código QR de tu emisión, así que puedes compartirlo antes de empezar. Toca **🎲 Nuevo** si quieres un enlace distinto para esta transmisión (por ejemplo, para que no entre quien tenía el de la vez anterior).
 
-**3. Comparte el enlace.** En unos segundos aparece **En directo**, con un enlace y un código QR. Toca *Compartir* para mandarlo por WhatsApp, Telegram o donde quieras, o deja que lo escaneen con la cámara.
+**3. Toca «Iniciar transmisión».** La primera vez te pedirá permiso para usar la cámara, el micrófono y las notificaciones: acepta los tres. También te preguntará si la app puede funcionar sin restricciones de batería: acepta, para que el móvil no corte la emisión. Si eliges *Pantalla*, el móvil te preguntará además si quieres compartir la pantalla entera o solo una app.
 
-**4. Cambia sobre la marcha.** Con la emisión en marcha puedes pasar de una cámara a otra o a la pantalla, y encender o apagar el micrófono. Quien te está viendo no pierde la conexión. Si tocas la fuente que ya está encendida, se apaga y se emite solo el sonido.
+**4. Comparte el enlace.** En unos segundos aparece **En directo**. Toca *Compartir* para mandar el enlace por WhatsApp, Telegram o donde quieras, o deja que escaneen el QR con la cámara.
 
-**5. Charla con quien te ve.** El **chat en directo** flota sobre la pantalla. Toca *Ocultar* para plegarlo: queda una burbuja 💬 que avisa con un número amarillo cuando llegan mensajes nuevos. Tus mensajes aparecen con borde amarillo y la etiqueta *Anfitrión*.
+**5. Cambia sobre la marcha.** Con la emisión en marcha puedes pasar de una cámara a otra o a la pantalla, y encender o apagar el micrófono. Quien te está viendo no pierde la conexión. Si tocas la fuente que ya está encendida, se apaga y se emite solo el sonido.
 
-**6. Termina cuando quieras** con *Detener*, o desde la notificación que se queda fija mientras emites.
+**6. Charla con quien te ve.** El **chat en directo** flota sobre la pantalla. Toca *Ocultar* para plegarlo: queda una burbuja 💬 que avisa con un número amarillo cuando llegan mensajes nuevos. Tus mensajes aparecen con borde amarillo y la etiqueta *Anfitrión*.
+
+**7. Sigue emitiendo aunque salgas de la app.** Puedes apagar la pantalla, usar otras apps o incluso cerrar QuickStream: la emisión continúa y una notificación fija te lo recuerda.
+
+**8. Termina cuando quieras** con *Detener* en la app, o con **Detener transmisión** en la notificación (despliégala si no ves el botón).
 
 ## Para quien te ve
 
@@ -89,7 +93,7 @@ La cámara emite con la mejor calidad que permite tu móvil (hasta 4K) y se adap
 <details>
 <summary><b>La voz no coincide con los labios</b></summary>
 <br>
-La página del espectador sincroniza sola el sonido y la imagen: tiene en cuenta qué cámara estás usando (frontal o trasera), lo que tarda la red y lo que tarda el propio dispositivo en sacar el sonido. Si notas desfase, comprueba que tienes la <b>versión 1.2 o posterior</b> de la app (las anteriores no le dicen al espectador qué cámara usas) y pide a quien te ve que recargue la página. Con auriculares Bluetooth puede quedar un pequeño desfase, porque algunos no informan bien de su retraso.
+La página del espectador sincroniza sola el sonido y la imagen, con cualquier cámara y aunque la calidad cambie por la red. Si notas desfase, pide a quien te ve que recargue la página. Funciona mejor en <b>Chrome o Edge</b>: en Safari, Firefox y en iPhone la voz puede llegar unas décimas tarde, porque esos navegadores no permiten ajustarlo. Con auriculares Bluetooth puede quedar un pequeño desfase, porque algunos no informan bien de su retraso.
 </details>
 
 <details>
@@ -138,7 +142,8 @@ En Render.com (gratis): *New → Web Service*, root directory `server`, build `n
 
 - **Calidad de imagen:** se captura hasta 4K. El techo de bitrate sube con la resolución (de 2,5 a 20 Mbps) y WebRTC equilibra nitidez y fluidez cuando la red no da. El techo de captura está en `MAX_CAPTURE_WIDTH`/`MAX_CAPTURE_HEIGHT` (`WebRtcClient.kt`).
 - **Audio:** cancelación de eco, control de ganancia, supresión de ruido y filtro de graves. Opus va con bitrate alto, `useinbandfec` activado y `usedtx` desactivado.
-- **Sincronización audio/imagen:** la hace `watch.html`, no WebRTC (el audio va en otro grupo de sincronización; ver `fixSyncInOffer`). Cada segundo lee de `getStats` el retraso natural de cada búfer de recepción y fija `jitterBufferTarget` del audio o del vídeo para mantener la diferencia correcta, corrigiendo con la diferencia real conseguida. Cada cámara tarda distinto en sacar la imagen respecto al sonido (`VIDEO_PIPELINE_MS`: trasera +220 ms, frontal −130 ms, medido en un OnePlus con destellos y pitidos), y la app manda la fuente activa en el mensaje `state`. También se descuenta la latencia de salida de audio del dispositivo (`AudioContext.outputLatency`). Para depurar, abre el visor con `?debug=sync`. La pantalla compartida aún no está calibrada (0 ms).
+- **Sincronización audio/imagen:** la hace WebRTC con las marcas de tiempo de captura (no depende de cámara, resolución ni codificación). Lo único que no corrige es que el micrófono del móvil entrega el sonido ~270–290 ms tarde, así que `watch.html` muestra cada fotograma `MIC_LATENCY_MS` (285 ms) más la latencia de salida de audio del dispositivo (`AudioContext.outputLatency`) después de recibirlo, con una cola `MediaStreamTrackProcessor`/`MediaStreamTrackGenerator` (Chrome/Edge). En otros navegadores queda solo la sincronización de WebRTC. Medido en un OnePlus con destellos y pitidos grabados por el móvil: ±20 ms con las dos cámaras. Para depurar, abre el visor con `?debug=sync`.
+- **Emisión en segundo plano:** `BroadcastService` es un *foreground service* que sigue vivo aunque se cierre la app; solo para con *Detener* (app o notificación). La app pide una vez quedar fuera de la optimización de batería.
 - **Safari:** `watch.html` incluye el arreglo para páginas que solo reciben vídeo, que si no se quedan sin conectar.
 - **Una sala = un móvil emitiendo**, con varios espectadores a la vez. La contraseña de sala (si se usa) es una protección básica, no cifrado.
 - **Dependencia WebRTC:** `io.github.webrtc-sdk:android` en `app/build.gradle.kts`. Si una versión deja de existir, usa la más reciente de mvnrepository.

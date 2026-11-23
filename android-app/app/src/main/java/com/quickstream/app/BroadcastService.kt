@@ -39,14 +39,10 @@ import kotlinx.coroutines.launch
  * trasera no pasa por aquí — no cambia el tipo de servicio, así que la Activity
  * llama directamente a BroadcastEngine.switchSource().
  *
- * IMPORTANTE — cerrar la app SÍ tiene que cortar la emisión: un foreground service
- * "normal" sobrevive aunque el usuario elimine la app de la lista de recientes (es
- * justo para eso que sirve un foreground service). Aquí NO lo queremos: si el
- * usuario cierra la app deslizándola fuera de recientes, la cámara/pantalla y el
- * micrófono tienen que apagarse en el acto, no seguir emitiendo en segundo plano de
- * forma invisible. Por eso [onTaskRemoved] para la emisión explícitamente. Apagar
- * solo la PANTALLA del móvil (sin cerrar/deslizar la app) sigue manteniendo la
- * emisión viva, como es de esperar.
+ * La emisión sigue en segundo plano INDEFINIDAMENTE, aunque se apague la pantalla
+ * o se cierre la app deslizándola fuera de recientes: solo termina cuando se pulsa
+ * "Detener" (en la app o en la notificación). La notificación persistente deja
+ * siempre claro que se está emitiendo.
  */
 class BroadcastService : Service() {
 
@@ -56,6 +52,7 @@ class BroadcastService : Service() {
     private var initializedState = false
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
+    private var notifiedUrl: String? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -89,6 +86,13 @@ class BroadcastService : Service() {
                     // ACTION_SWITCH_SOURCE (no debería, pero por si acaso), nos
                     // aseguramos igualmente de que el tipo declarado está al día.
                     startForegroundCompat(state.activeSource)
+                }
+                if (state.isRunning && state.viewerUrl != notifiedUrl) {
+                    // Cuando ya hay enlace, la notificación lo muestra (y sigue
+                    // ofreciendo "Detener transmisión").
+                    notifiedUrl = state.viewerUrl
+                    getSystemService(NotificationManager::class.java)
+                        .notify(NOTIF_ID, buildNotification())
                 }
                 lastSource = state.activeSource
                 wasRunning = state.isRunning
@@ -205,19 +209,6 @@ class BroadcastService : Service() {
     }
 
     /**
-     * Se llama cuando el usuario elimina la app de la lista de apps recientes
-     * (deslizándola fuera). Un foreground service sin este método seguiría vivo —
-     * cámara/pantalla y micrófono encendidos — de forma invisible, que es
-     * precisamente lo que no queremos: cerrar la app tiene que cortar la emisión.
-     */
-    override fun onTaskRemoved(rootIntent: Intent?) {
-        super.onTaskRemoved(rootIntent)
-        BroadcastEngine.stop()
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
-    }
-
-    /**
      * El vídeo es opcional (igual que el micrófono, ver [VideoSource.NONE]), así
      * que el tipo de "foreground service" declarado en Android 14+ tiene que
      * reflejar SOLO el recurso que realmente se está usando: cámara únicamente
@@ -261,12 +252,22 @@ class BroadcastService : Service() {
             this, 0, openIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val url = BroadcastEngine.stateFlow.value.viewerUrl
+        val text = if (url != null) "Emitiendo en $url" else "Conectando…"
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("QuickStream está en directo")
-            .setContentText("Toca para volver a la app")
+            .setContentText(text)
+            .setStyle(
+                NotificationCompat.BigTextStyle().bigText(
+                    "$text\nSigue emitiendo aunque cierres la app. Pulsa «Detener transmisión» para terminar."
+                )
+            )
             .setSmallIcon(android.R.drawable.ic_menu_camera)
+            .setColor(0xFF6D3FE0.toInt())
             .setContentIntent(openPending)
-            .addAction(0, "Detener", stopPending)
+            .addAction(0, "Detener transmisión", stopPending)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .build()
