@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fondo del chat flotante: la superficie de las tarjetas, opaca, con un
+     borde sutil para que se despegue del contenido que tiene debajo. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="@color/surface" />
+    <stroke android:width="1dp" android:color="@color/surface_alt" />
+    <corners android:radius="18dp" />
+</shape>

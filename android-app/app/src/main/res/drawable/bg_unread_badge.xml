@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contador de mensajes sin leer, en el amarillo de "encendido" de la app. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="@color/state_on" />
+    <corners android:radius="11dp" />
+</shape>

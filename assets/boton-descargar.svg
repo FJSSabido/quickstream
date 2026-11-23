@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="88" viewBox="0 0 420 88">
+  <rect x="2" y="2" width="416" height="84" rx="42" fill="#E4FF00"/>
+  <g transform="translate(40 22)" fill="none" stroke="#1A1300" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M22 4 v28"/>
+    <path d="M10 21 l12 12 12 -12"/>
+    <path d="M6 42 h32"/>
+  </g>
+  <text x="96" y="55" font-family="'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="28" font-weight="bold" fill="#1A1300">Descargar para Android</text>
+</svg>

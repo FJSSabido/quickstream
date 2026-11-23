@@ -16,3 +16,6 @@ server/npm-debug.log*
 *.log
 # Android Studio (carpeta raíz)
 .idea/
+
+# APK para subir a la release de GitHub (no se versiona: pesa ~50 MB)
+/QuickStream.apk

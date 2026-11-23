@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="200" viewBox="0 0 1280 200" font-family="'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <rect width="1280" height="200" rx="24" fill="#0F0B1A"/>
+  <g transform="translate(40 36)">
+    <rect width="220" height="90" rx="18" fill="#E4FF00"/>
+    <text x="0" y="122" font-size="20" font-weight="700" fill="#EEF1F5">Encendido</text>
+    <text x="120" y="122" font-size="18" fill="#A9A1C2">#E4FF00</text>
+  </g>
+  <g transform="translate(284 36)">
+    <rect width="220" height="90" rx="18" fill="#6D3FE0"/>
+    <text x="0" y="122" font-size="20" font-weight="700" fill="#EEF1F5">Apagado</text>
+    <text x="120" y="122" font-size="18" fill="#A9A1C2">#6D3FE0</text>
+  </g>
+  <g transform="translate(528 36)">
+    <rect width="220" height="90" rx="18" fill="#B79CFF"/>
+    <text x="0" y="122" font-size="20" font-weight="700" fill="#EEF1F5">Enlaces</text>
+    <text x="120" y="122" font-size="18" fill="#A9A1C2">#B79CFF</text>
+  </g>
+  <g transform="translate(772 36)">
+    <rect width="220" height="90" rx="18" fill="#1A1528" stroke="#261E3A" stroke-width="2"/>
+    <text x="0" y="122" font-size="20" font-weight="700" fill="#EEF1F5">Tarjetas</text>
+    <text x="120" y="122" font-size="18" fill="#A9A1C2">#1A1528</text>
+  </g>
+  <g transform="translate(1016 36)">
+    <rect width="220" height="90" rx="18" fill="#4ADE80"/>
+    <text x="0" y="122" font-size="20" font-weight="700" fill="#EEF1F5">En directo</text>
+    <text x="120" y="122" font-size="18" fill="#A9A1C2">#4ADE80</text>
+  </g>
+</svg>

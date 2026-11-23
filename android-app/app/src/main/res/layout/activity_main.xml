@@ -1,12 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg"
+    android:background="@color/bg">
+
+<ScrollView
+    android:id="@+id/scrollMain"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:clipToPadding="false"
     android:fillViewport="true">
 
     <LinearLayout
+        android:id="@+id/contentMain"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
@@ -28,8 +35,13 @@
             android:textColor="@color/text_secondary"
             android:textSize="13sp" />
 
-        <!-- Tarjeta: Conexión -->
+        <!-- Tarjeta: Conexión. Oculta: el servidor, la sala y la contraseña se rellenan
+             solos (servidor por defecto + sala aleatoria guardada), así quien usa la app
+             solo ve la fuente, el audio y el enlace/QR. Se mantiene en el layout porque
+             MainActivity sigue leyendo esos campos. -->
         <LinearLayout
+            android:id="@+id/cardConnection"
+            android:visibility="gone"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="18dp"
@@ -139,6 +151,14 @@
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnSourceFront"
+                    android:autoSizeTextType="uniform"
+                    android:autoSizeMinTextSize="8sp"
+                    android:autoSizeMaxTextSize="13sp"
+                    android:paddingTop="6dp"
+                    android:paddingBottom="6dp"
+                    android:letterSpacing="0"
+                    android:paddingStart="2dp"
+                    android:paddingEnd="2dp"
                     android:layout_width="0dp"
                     android:layout_height="78dp"
                     android:layout_weight="1"
@@ -155,6 +175,14 @@
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnSourceBack"
+                    android:autoSizeTextType="uniform"
+                    android:autoSizeMinTextSize="8sp"
+                    android:autoSizeMaxTextSize="13sp"
+                    android:paddingTop="6dp"
+                    android:paddingBottom="6dp"
+                    android:letterSpacing="0"
+                    android:paddingStart="2dp"
+                    android:paddingEnd="2dp"
                     android:layout_width="0dp"
                     android:layout_height="78dp"
                     android:layout_weight="1"
@@ -171,6 +199,14 @@
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnSourceScreen"
+                    android:autoSizeTextType="uniform"
+                    android:autoSizeMinTextSize="8sp"
+                    android:autoSizeMaxTextSize="13sp"
+                    android:paddingTop="6dp"
+                    android:paddingBottom="6dp"
+                    android:letterSpacing="0"
+                    android:paddingStart="2dp"
+                    android:paddingEnd="2dp"
                     android:layout_width="0dp"
                     android:layout_height="78dp"
                     android:layout_weight="1"
@@ -188,6 +224,7 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnToggleMic"
+                android:letterSpacing="0"
                 android:layout_width="match_parent"
                 android:layout_height="64dp"
                 android:layout_marginTop="10dp"
@@ -204,6 +241,7 @@
         <!-- Botón principal -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnStartStop"
+            android:letterSpacing="0"
             android:layout_width="match_parent"
             android:layout_height="56dp"
             android:layout_marginTop="22dp"
@@ -245,7 +283,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:textColor="@color/accent"
+                android:textColor="@color/accent_light"
                 android:textIsSelectable="true"
                 android:textSize="14sp" />
 
@@ -267,6 +305,10 @@
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnCopyUrl"
+                    android:textColor="@color/accent_light"
+                    android:textAllCaps="false"
+                    android:textSize="15sp"
+                    android:letterSpacing="0"
                     style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
@@ -276,6 +318,11 @@
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnShareUrl"
+                    android:textAllCaps="false"
+                    android:textSize="15sp"
+                    android:paddingStart="4dp"
+                    android:paddingEnd="4dp"
+                    android:letterSpacing="0"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
@@ -294,76 +341,165 @@
             android:textColor="@color/text_secondary"
             android:textSize="12sp" />
 
-        <!-- Tarjeta: Chat en directo (compartido, lo ve todo el mundo — anfitrión y
-             espectadores). Baja hasta aquí en la pantalla para leer y escribir. -->
+    </LinearLayout>
+</ScrollView>
+
+    <!-- Chat en directo FLOTANTE (compartido: lo ven el anfitrión y todos los
+         espectadores). Aparece encima de la pantalla en cuanto la emisión está en
+         directo; con ⌄ se pliega y queda solo la burbuja 💬, que cuenta los mensajes
+         nuevos sin leer. Mismo comportamiento que el chat de la web en el móvil. -->
+    <LinearLayout
+        android:id="@+id/cardChat"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:layout_margin="12dp"
+        android:background="@drawable/bg_chat_float"
+        android:elevation="10dp"
+        android:orientation="vertical"
+        android:paddingStart="14dp"
+        android:paddingTop="10dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="12dp"
+        android:visibility="gone">
+
         <LinearLayout
-            android:id="@+id/cardChat"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:background="@drawable/bg_card"
-            android:orientation="vertical"
-            android:padding="18dp"
-            android:visibility="gone">
+            android:layout_marginEnd="6dp"
+            android:layout_marginBottom="4dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
             <TextView
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_weight="1"
                 android:text="💬 Chat en directo"
                 android:textColor="@color/text_primary"
                 android:textSize="14sp"
                 android:textStyle="bold" />
 
             <TextView
-                android:id="@+id/txtChatEmpty"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
+                android:id="@+id/btnChatHide"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:background="@drawable/bg_chat_hide"
+                android:contentDescription="Ocultar chat"
                 android:gravity="center"
-                android:text="Todavía no hay mensajes."
-                android:textColor="@color/text_secondary"
+                android:paddingHorizontal="14dp"
+                android:text="Ocultar"
+                android:textColor="@color/text_primary"
                 android:textSize="12sp" />
-
-            <LinearLayout
-                android:id="@+id/chatMessagesContainer"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:orientation="vertical" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:gravity="bottom"
-                android:orientation="horizontal">
-
-                <com.google.android.material.textfield.TextInputLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:hint="Escribe un mensaje…"
-                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/inputChatMessage"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:imeOptions="actionSend"
-                        android:inputType="text"
-                        android:maxLength="500"
-                        android:singleLine="true" />
-                </com.google.android.material.textfield.TextInputLayout>
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnSendChat"
-                    android:layout_width="wrap_content"
-                    android:layout_height="56dp"
-                    android:layout_marginStart="8dp"
-                    android:insetTop="0dp"
-                    android:insetBottom="0dp"
-                    android:text="Enviar" />
-            </LinearLayout>
         </LinearLayout>
 
+        <ScrollView
+            android:id="@+id/chatScroll"
+            android:layout_width="match_parent"
+            android:layout_height="112dp"
+            android:layout_marginEnd="6dp"
+            android:overScrollMode="never"
+            android:defaultFocusHighlightEnabled="false"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/txtChatEmpty"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="28dp"
+                    android:gravity="center"
+                    android:text="Todavía no hay mensajes."
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp" />
+
+                <LinearLayout
+                    android:id="@+id/chatMessagesContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+            </LinearLayout>
+        </ScrollView>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:layout_marginEnd="6dp"
+            android:gravity="bottom"
+            android:orientation="horizontal">
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="Escribe un mensaje…"
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/inputChatMessage"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:imeOptions="actionSend"
+                    android:inputType="text"
+                    android:maxLength="500"
+                    android:singleLine="true" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSendChat"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:layout_marginStart="8dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:padding="0dp"
+                android:contentDescription="Enviar mensaje"
+                android:text="➤"
+                android:textSize="18sp"
+                app:cornerRadius="14dp" />
+        </LinearLayout>
     </LinearLayout>
-</ScrollView>
+
+    <!-- Burbuja del chat plegado, con contador de mensajes sin leer. -->
+    <FrameLayout
+        android:id="@+id/chatFab"
+        android:layout_width="66dp"
+        android:layout_height="66dp"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="16dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/btnChatShow"
+            android:layout_width="58dp"
+            android:layout_height="58dp"
+            android:layout_gravity="bottom|start"
+            android:background="@drawable/bg_chat_fab"
+            android:contentDescription="Mostrar chat"
+            android:elevation="8dp"
+            android:gravity="center"
+            android:text="💬"
+            android:textSize="24sp" />
+
+        <TextView
+            android:id="@+id/txtChatUnread"
+            android:layout_width="wrap_content"
+            android:layout_height="22dp"
+            android:layout_gravity="top|end"
+            android:background="@drawable/bg_unread_badge"
+            android:elevation="9dp"
+            android:gravity="center"
+            android:minWidth="22dp"
+            android:paddingHorizontal="6dp"
+            android:textColor="@color/state_on_text"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+    </FrameLayout>
+
+</FrameLayout>
+

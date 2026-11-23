@@ -1,10 +1,14 @@
 <resources>
-    <color name="bg">#0B0D12</color>
-    <color name="surface">#161A22</color>
-    <color name="surface_alt">#1E2430</color>
+    <color name="bg">#0F0B1A</color>
+    <color name="surface">#1A1528</color>
+    <color name="surface_alt">#261E3A</color>
     <color name="text_primary">#EEF1F5</color>
-    <color name="text_secondary">#9AA2B1</color>
-    <color name="accent">#4A6BFF</color>
+    <color name="text_secondary">#A9A1C2</color>
+    <!-- Acento = el mismo morado de "apagado"; para texto/enlaces sobre fondo
+         oscuro se usa la variante clara, que se lee mejor. -->
+    <color name="accent">#6D3FE0</color>
+    <color name="accent_light">#B79CFF</color>
+    <color name="on_accent">#FFFFFF</color>
     <color name="live_green">#4ADE80</color>
     <color name="off_red">#F87171</color>
     <!-- Botones grandes de fuente/audio (y el botón principal cuando está emitiendo):
@@ -13,5 +17,5 @@
     <color name="state_on_text">#1A1300</color>
     <color name="state_off">#6D3FE0</color>
     <color name="state_off_text">#EEF1F5</color>
-    <color name="ic_launcher_background">#4A6BFF</color>
+    <color name="ic_launcher_background">#6D3FE0</color>
 </resources>

@@ -9,7 +9,7 @@
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0; min-height: 100%;
-    background: #0b0d12; color: #eef1f5;
+    background: #0f0b1a; color: #eef1f5;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
   .wrap {
@@ -17,12 +17,12 @@
   }
   header {
     padding: 14px 16px; display: flex; align-items: center; justify-content: space-between;
-    gap: 10px; border-bottom: 1px solid #1c2028; flex-wrap: wrap;
+    gap: 10px; border-bottom: 1px solid #1f1830; flex-wrap: wrap;
   }
   header h1 { font-size: 15px; font-weight: 600; margin: 0; opacity: 0.9; }
   .status {
     font-size: 12px; padding: 4px 10px; border-radius: 999px; white-space: nowrap;
-    background: #262b35; color: #a9b0bd;
+    background: #2c2340; color: #a9b0bd;
   }
   .status.live { background: #1c3a2a; color: #4ade80; }
   .header-right { display: flex; align-items: center; gap: 8px; }
@@ -63,7 +63,7 @@
      una columna fija a la derecha (ver los media queries). */
   .chat-panel {
     flex: 1; min-height: 280px; display: flex; flex-direction: column;
-    border-top: 1px solid #1c2028; background: #0e1016;
+    border-top: 1px solid #1f1830; background: #120d1f;
   }
   /* A partir de aquí consideramos que hay sitio de sobra para poner el chat al
      lado del vídeo en vez de debajo — pensado para PC/escritorio. */
@@ -78,12 +78,12 @@
     .video-area { flex: 1; height: auto; min-height: 0; }
     .chat-panel {
       flex: none; width: 340px; min-height: 0; height: 100%;
-      border-top: none; border-left: 1px solid #1c2028;
+      border-top: none; border-left: 1px solid #1f1830;
     }
   }
   .chat-header {
     padding: 10px 16px; font-size: 12px; font-weight: 600; color: #9aa2b1;
-    border-bottom: 1px solid #1c2028; flex: none;
+    border-bottom: 1px solid #1f1830; flex: none;
   }
   .chat-messages {
     flex: 1; overflow-y: auto; padding: 12px 16px;
@@ -91,32 +91,32 @@
   }
   .chat-msg {
     max-width: 85%; padding: 8px 12px; border-radius: 14px; font-size: 13.5px;
-    line-height: 1.4; word-break: break-word; background: #1e2430;
+    line-height: 1.4; word-break: break-word; background: #261e3a;
   }
   .chat-msg .chat-name {
     display: block; font-size: 11px; font-weight: 700; opacity: 0.75; margin-bottom: 2px;
   }
-  .chat-msg.mine { align-self: flex-end; background: #23306b; }
+  .chat-msg.mine { align-self: flex-end; background: #3a2477; }
   .chat-msg.host { align-self: flex-start; background: #2b2607; border: 1px solid #E4FF00; }
   .chat-msg.host .chat-name { color: #E4FF00; }
   .chat-empty { color: #565d6b; font-size: 12.5px; text-align: center; padding: 10px 0; }
   .chat-form {
     flex: none; display: flex; flex-direction: column; gap: 6px;
-    padding: 10px 16px; border-top: 1px solid #1c2028;
+    padding: 10px 16px; border-top: 1px solid #1f1830;
   }
   .chat-name-input, .chat-text-input {
-    border-radius: 10px; border: 1px solid #2a2f3a; background: #12151c; color: #eef1f5;
+    border-radius: 10px; border: 1px solid #33294a; background: #151024; color: #eef1f5;
     font-size: 13.5px; padding: 9px 12px;
   }
   .chat-name-input { font-size: 12px; padding: 7px 12px; }
-  .chat-name-input:focus, .chat-text-input:focus { outline: none; border-color: #4a6bff; }
+  .chat-name-input:focus, .chat-text-input:focus { outline: none; border-color: #6d3fe0; }
   .chat-text-input:disabled { opacity: 0.55; cursor: not-allowed; }
   .chat-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
   .chat-input-row { display: flex; gap: 8px; }
   .chat-text-input { flex: 1; }
   .chat-send-btn {
     flex: none; width: 42px; border-radius: 10px; border: none;
-    background: #4a6bff; color: white; font-size: 16px; cursor: pointer;
+    background: #6d3fe0; color: white; font-size: 16px; cursor: pointer;
   }
   .chat-send-btn:active { opacity: 0.8; }
   video { width: 100%; height: 100%; object-fit: contain; background: #000; }
@@ -146,7 +146,7 @@
     display: flex; align-items: center; justify-content: center; cursor: pointer;
   }
   .volume-control button:active { background: rgba(255,255,255,0.15); }
-  .volume-control input[type="range"] { width: 80px; accent-color: #7c9cff; cursor: pointer; }
+  .volume-control input[type="range"] { width: 80px; accent-color: #b79cff; cursor: pointer; }
   /* Iconos de "sin señal": avisan de que quien emite ha apagado el vídeo y/o el
      micrófono, en vez de dejar la imagen congelada sin explicación. La barra
      diagonal (::after) es la misma idea visual que usan Zoom/Meet para "cámara
@@ -173,21 +173,21 @@
   .overlay p { max-width: 320px; color: #9aa2b1; line-height: 1.5; margin: 0; font-size: 14px; }
   .spinner {
     width: 34px; height: 34px; border-radius: 50%;
-    border: 3px solid #2a2f3a; border-top-color: #7c9cff;
+    border: 3px solid #33294a; border-top-color: #b79cff;
     animation: spin 0.9s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
   .btn {
     padding: 10px 20px; border-radius: 10px; border: none; font-size: 14px; font-weight: 600;
-    background: #4a6bff; color: white; cursor: pointer;
+    background: #6d3fe0; color: white; cursor: pointer;
   }
   .btn:active { opacity: 0.8; }
   .pw-input {
     width: 100%; max-width: 260px; padding: 10px 14px; border-radius: 10px;
-    border: 1px solid #2a2f3a; background: #12151c; color: #eef1f5;
+    border: 1px solid #33294a; background: #151024; color: #eef1f5;
     font-size: 14px; text-align: center;
   }
-  .pw-input:focus { outline: none; border-color: #4a6bff; }
+  .pw-input:focus { outline: none; border-color: #6d3fe0; }
   footer { padding: 10px 16px; font-size: 11px; color: #565d6b; text-align: center; }
   /* MÓVIL: el chat FLOTA encima del vídeo (como en Instagram/TikTok Live) en vez
      de quedar debajo, para poder seguirlo sin tener que bajar por la página y
@@ -238,7 +238,7 @@
       font-size: 13px; padding: 6px 10px; max-width: 88%;
       background: rgba(30,36,48,0.78); backdrop-filter: blur(4px);
     }
-    .chat-msg.mine { background: rgba(35,48,107,0.85); }
+    .chat-msg.mine { background: rgba(58,36,119,0.85); }
     .chat-msg.host { background: rgba(43,38,7,0.85); }
     .chat-form { flex-direction: row; gap: 6px; padding: 6px 12px 10px; border-top: none; }
     .chat-name-input { flex: none; width: 92px; }
@@ -253,7 +253,7 @@
     }
     .chat-toggle .unread {
       position: absolute; top: -3px; right: -3px; min-width: 18px; height: 18px;
-      padding: 0 5px; border-radius: 999px; background: #4a6bff; color: #fff;
+      padding: 0 5px; border-radius: 999px; background: #6d3fe0; color: #fff;
       font-size: 11px; font-weight: 700; line-height: 18px; text-align: center;
     }
     .chat-toggle .unread:empty { display: none; }

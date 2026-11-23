@@ -1,243 +1,139 @@
-# QuickStream — cámara/pantalla del móvil en una URL (estilo VDO.Ninja casero)
+<p align="center"><img src="assets/banner.svg" alt="QuickStream" width="100%"></p>
 
-App de Android que emite tu cámara (trasera o delantera) o la pantalla del móvil por
-WebRTC, con un enlace `https://tu-servidor/watch/sala` que cualquiera puede abrir en un
-navegador para verlo en directo, sin instalar nada. Incluye micrófono con botón de
-silenciar.
+<p align="center"><b>Emite la cámara o la pantalla de tu móvil y compártela con un simple enlace.</b><br>
+Quien lo abra te ve en directo desde cualquier navegador, sin instalar nada.</p>
 
-El vídeo/audio viaja siempre **directo entre el móvil y quien lo ve** (peer-to-peer, como
-hace VDO.Ninja). El servidor que tienes que desplegar solo hace de "intermediario de
-presentación" al principio (intercambiar unos mensajes técnicos para que ambos lados se
-encuentren) — no ve ni graba el vídeo.
+<p align="center"><img src="assets/capturas.png" alt="Capturas: pantalla de inicio, emisión en directo con el enlace y el chat, chat plegado con mensajes nuevos y vista del espectador en el navegador" width="100%"></p>
 
-## Qué hay en esta carpeta
+---
+
+## Instálala en tu móvil
+
+<table>
+<tr>
+<td width="46%" align="center">
+<img src="assets/qr-instalar.png" alt="Código QR para descargar QuickStream" width="300">
+</td>
+<td>
+
+**1. Escanea el código** con la cámara del móvil, o toca el botón:
+
+<a href="https://github.com/FJSSabido/quickstream/releases/latest/download/QuickStream.apk"><img src="assets/boton-descargar.svg" alt="Descargar para Android" width="300"></a>
+
+**2. Abre el archivo descargado** desde la notificación o desde la carpeta *Descargas*.
+
+**3. Toca «Instalar».** Si el móvil avisa de que es una app de fuera de Play Store, toca *Ajustes* y activa *Permitir desde esta fuente*. Solo hay que hacerlo una vez.
+
+</td>
+</tr>
+</table>
+
+> Funciona en móviles **Android** (versión 8 o posterior). Para **ver** una emisión no hace falta instalar nada: sirve cualquier móvil, tablet u ordenador, también iPhone.
+
+## Cómo se usa
+
+**1. Elige qué quieres emitir.** Toca uno de los botones grandes: **Frontal**, **Trasera** o **Pantalla**. El que está en **amarillo** es el que está encendido; los **morados** están apagados. El botón **Micrófono** funciona igual.
+
+**2. Toca «Iniciar transmisión».** La primera vez te pedirá permiso para usar la cámara, el micrófono y las notificaciones: acepta los tres. Si eliges *Pantalla*, el móvil te preguntará también si quieres compartir la pantalla entera o solo una app.
+
+**3. Comparte el enlace.** En unos segundos aparece **En directo**, con un enlace y un código QR. Toca *Compartir* para mandarlo por WhatsApp, Telegram o donde quieras, o deja que lo escaneen con la cámara.
+
+**4. Cambia sobre la marcha.** Con la emisión en marcha puedes pasar de una cámara a otra o a la pantalla, y encender o apagar el micrófono. Quien te está viendo no pierde la conexión. Si tocas la fuente que ya está encendida, se apaga y se emite solo el sonido.
+
+**5. Charla con quien te ve.** El **chat en directo** flota sobre la pantalla. Toca *Ocultar* para plegarlo: queda una burbuja 💬 que avisa con un número amarillo cuando llegan mensajes nuevos. Tus mensajes aparecen con borde amarillo y la etiqueta *Anfitrión*.
+
+**6. Termina cuando quieras** con *Detener*, o desde la notificación que se queda fija mientras emites.
+
+## Para quien te ve
+
+Abre el enlace en el navegador (Chrome, Safari, Firefox…) y toca *Reproducir*. Ya está.
+
+- **⟲ ⟳** giran la imagen si se ve de lado. **⛶** la pone a pantalla completa.
+- **🔊** y la barra de volumen ajustan el sonido. Solo afectan a ese espectador.
+- **El chat** aparece abajo, encima del vídeo. En el móvil se pliega con su botón redondo para ver la imagen despejada. Se puede poner un nombre (el navegador lo recuerda). Si no, aparece como *Invitado*.
+- Si quien emite apaga la cámara o el micrófono, aparece un icono tachado 🎥 / 🎙️ en vez de una imagen congelada.
+
+## Preguntas frecuentes
+
+<details>
+<summary><b>¿Alguien puede grabar o ver mi emisión sin el enlace?</b></summary>
+<br>
+El vídeo y el sonido viajan directos de tu móvil a quien te ve. No pasan por ningún servidor ni se graban. Para verla hace falta el enlace, que lleva un código de sala aleatorio. El chat se borra al terminar la emisión.
+</details>
+
+<details>
+<summary><b>Quien me ve dice que la imagen está en negro</b></summary>
+<br>
+Si estás compartiendo la <b>pantalla</b>, algunos móviles (OnePlus, OPPO, Xiaomi…) tienen una función de privacidad que tapa la pantalla mientras se comparte. Búscala en <i>Ajustes</i> como <i>«Protección al compartir pantalla»</i> y desactívala, o emite con la cámara.<br><br>
+Si pasa con la <b>cámara</b>, suele ser una red muy restrictiva (algunas WiFi de empresa o datos móviles de ciertos operadores). Prueba a cambiar de WiFi a datos o al revés.
+</details>
+
+<details>
+<summary><b>En iPhone no se ve nada</b></summary>
+<br>
+Abre el enlace directamente en <b>Safari</b>, no dentro de WhatsApp o Instagram. El navegador que llevan esas apps dentro no siempre es compatible.
+</details>
+
+<details>
+<summary><b>La emisión tarda un poco en arrancar</b></summary>
+<br>
+Si nadie ha usado QuickStream en un rato, el servidor puede tardar hasta un minuto en despertar. Las siguientes veces arranca en segundos.
+</details>
+
+<details>
+<summary><b>¿Gasta mucha batería o datos?</b></summary>
+<br>
+La cámara emite con la mejor calidad que permite tu móvil (hasta 4K) y se adapta sola si la red va justa. En emisiones largas el móvil se calienta más y gasta más batería, como al grabar vídeo. Con datos móviles, ten en cuenta que una hora en buena calidad puede consumir varios GB.
+</details>
+
+<details>
+<summary><b>¿Cómo la actualizo a una versión nueva?</b></summary>
+<br>
+Escanea el mismo código QR y vuelve a instalar.
+</details>
+
+## Colores
+
+Fondo de noche con morado y amarillo fosforito: amarillo es *encendido*, morado es *apagado*, en los botones, el chat y el icono.
+
+<p align="center"><img src="assets/paleta.svg" alt="Paleta: encendido #E4FF00, apagado #6D3FE0, enlaces #B79CFF, tarjetas #1A1528, en directo #4ADE80" width="100%"></p>
+
+---
+
+<details>
+<summary>Para desarrolladores</summary>
+<br>
+
+### Qué hay en el repositorio
 
 ```
-server/          servidor de señalización (Node.js) + página web del visor
-android-app/     proyecto de Android Studio (Kotlin) con la app
+android-app/   app de Android (Kotlin) — se abre con Android Studio
+server/        servidor de señalización (Node.js) + página web del espectador
+assets/        imágenes de este README
 ```
 
-## 1. Desplegar el servidor (una sola vez, gratis)
+El vídeo y el audio van por **WebRTC peer-to-peer**. El servidor solo presenta a los dos lados al principio y reenvía los avisos pequeños: el chat, los iconos de «sin señal» y el contador de espectadores. Nunca ve el vídeo.
 
-Necesitas que el servidor esté accesible por internet con una URL `https://...` para que
-funcione fuera de tu propia WiFi (y para que los navegadores acepten el WebRTC).
+### Compilar la app
 
-**Opción recomendada: Render.com (gratis)**
+1. Abre `android-app/` en Android Studio (*File → Open*) y espera al *Gradle Sync*.
+2. *Build → Build APK(s)*, o desde terminal: `./gradlew assembleDebug`. El APK queda en `android-app/app/build/outputs/apk/debug/app-debug.apk`.
+3. Para publicar una versión nueva, renombra el APK a `QuickStream.apk` y súbelo como archivo de una *release* de GitHub. El QR y el botón de descarga siempre apuntan a la última release.
 
-1. Crea una cuenta en https://render.com
-2. Sube la carpeta `server/` a un repositorio de GitHub (o usa "Deploy from a public Git
-   repo" si ya tienes uno).
-3. En Render: **New + → Web Service**, conecta el repo, y configura:
-   - Root directory: `server`
-   - Build command: `npm install`
-   - Start command: `npm start`
-   - Plan: Free
-4. Cuando termine el despliegue, Render te da una URL como
-   `https://quickstream-xxxx.onrender.com`. Esa es la que pones en el campo "URL del
-   servidor" de la app.
+La app usa por defecto el servidor de `DEFAULT_SERVER_URL` (en `MainActivity.kt`) y genera una sala aleatoria que se guarda entre usos. La tarjeta de conexión (servidor, sala y contraseña) sigue en el layout, oculta (`cardConnection`), por si hace falta volver a mostrarla.
 
-**Alternativas**: Railway, Fly.io, un VPS propio con Node.js instalado (`node server.js`,
-detrás de Nginx/Caddy con HTTPS), o incluso tu propio ordenador con `npm start` si solo
-vas a usarlo en tu red local (usa `http://192.168.x.x:8080` en ese caso, sin HTTPS).
+### Desplegar el servidor
 
-**Probarlo en local antes de desplegar** (opcional):
-```bash
-cd server
-npm install
-npm start
-# abre http://localhost:8080 en el navegador para comprobar que arranca
-```
+En Render.com (gratis): *New → Web Service*, root directory `server`, build `npm install`, start `npm start`. En local: `cd server && npm install && npm start` y abre `http://localhost:8080`.
 
-## 2. Compilar la app (Android Studio)
+**TURN opcional (Cloudflare Realtime).** Hace falta en redes con NAT restrictivo, donde la conexión directa no llega a establecerse. Crea una *TURN Key* en Cloudflare y define las variables de entorno `CF_TURN_KEY_ID` y `CF_TURN_API_TOKEN` en el servidor. La app y la web piden credenciales temporales (24 h) a `/turn-credentials`. El token nunca sale del servidor.
 
-No se incluye un `.apk` ya compilado porque generarlo requiere descargar la librería de
-WebRTC y las dependencias de Android desde los repositorios de Google/Maven, a los que
-este entorno de trabajo no tiene acceso. Compilarlo tú en Android Studio es rápido:
+### Notas técnicas
 
-1. Instala [Android Studio](https://developer.android.com/studio) si no lo tienes.
-2. **File → Open** y selecciona la carpeta `android-app/`.
-3. Espera a que termine el "Gradle Sync" (la primera vez descarga la librería WebRTC,
-   pesa bastante, puede tardar unos minutos).
-4. Conecta tu móvil por USB (con la depuración USB activada) o usa un emulador.
-5. Pulsa el botón ▶ Run, o **Build → Build Bundle(s) / APK(s) → Build APK(s)** para
-   generar el `.apk` instalable (aparece en
-   `android-app/app/build/outputs/apk/debug/app-debug.apk`).
-6. Para instalarlo en otro móvil sin cable: comparte ese `.apk` (por ejemplo por Drive o
-   WhatsApp) y ábrelo en el móvil habiendo permitido "instalar apps de orígenes
-   desconocidos".
+- **Calidad de imagen:** se captura hasta 4K. El techo de bitrate sube con la resolución (de 2,5 a 20 Mbps) y WebRTC equilibra nitidez y fluidez cuando la red no da. El techo de captura está en `MAX_CAPTURE_WIDTH`/`MAX_CAPTURE_HEIGHT` (`WebRtcClient.kt`).
+- **Audio:** cancelación de eco, control de ganancia, supresión de ruido y filtro de graves. Opus va con bitrate alto, `useinbandfec` activado y `usedtx` desactivado.
+- **Safari:** `watch.html` incluye el arreglo para páginas que solo reciben vídeo, que si no se quedan sin conectar.
+- **Una sala = un móvil emitiendo**, con varios espectadores a la vez. La contraseña de sala (si se usa) es una protección básica, no cifrado.
+- **Dependencia WebRTC:** `io.github.webrtc-sdk:android` en `app/build.gradle.kts`. Si una versión deja de existir, usa la más reciente de mvnrepository.
 
-### Si Android Studio se queja de la dependencia de WebRTC
-
-El fichero `android-app/app/build.gradle.kts` usa:
-```kotlin
-implementation("io.github.webrtc-sdk:android:125.6422.07")
-```
-Si esa versión concreta ya no existe cuando lo compiles, Android Studio te lo señalará en
-rojo. Solución: abre https://mvnrepository.com/artifact/io.github.webrtc-sdk/android,
-copia la versión más reciente que aparezca, y sustitúyela en esa línea.
-
-### Si aparece un error de "método no implementado" en `WebRtcClient.kt`
-
-Las interfaces internas de la librería WebRTC (como `PeerConnection.Observer`) a veces
-añaden algún método nuevo entre versiones. Si Android Studio marca un error de "clase
-abstracta / método no implementado" en `createPeerConnectionForViewer`, usa el atajo
-Alt+Enter → "Implement members" sobre la clase anónima y déjalo con el cuerpo vacío
-(`{}`); no afecta al funcionamiento.
-
-## 3. Usar la app
-
-1. Abre la app, pon la URL de tu servidor desplegado (paso 1) y un nombre de sala (o deja
-   el que se genera solo).
-2. En la tarjeta **🎛️ Fuente y audio**, toca el botón grande de la fuente con la que
-   quieres empezar: **🤳 Frontal**, **📷 Trasera** o **🖥️ Pantalla** (amarillo = activa,
-   morado = apagada). El botón **🎙️ Micrófono** funciona igual: amarillo = encendido. El
-   vídeo es opcional igual que el audio: si tocas la fuente que ya está activa, se apaga
-   — puedes dejar los tres botones de fuente apagados a la vez (solo se emite audio) o
-   el micrófono apagado (solo se emite vídeo), lo que necesites en cada momento.
-3. Concede los permisos que te pida (cámara y micrófono se piden siempre, aunque
-   empieces compartiendo pantalla, para poder cambiar de fuente más adelante sin
-   cortar la emisión; para pantalla, además, la confirmación del sistema para
-   grabarla — en Android 13+ ese mismo aviso del sistema ya te deja elegir entre
-   grabar la pantalla completa o solo una app/ventana concreta).
-4. Pulsa **Iniciar transmisión**. En unos segundos aparece el enlace y el código QR.
-5. Comparte ese enlace (o el QR) con quien quieras que lo vea — lo abren en cualquier
-   navegador (Chrome, Safari, Firefox...) y ya está, sin instalar nada.
-6. **Con la transmisión ya en marcha puedes seguir tocando esos mismos botones para
-   cambiar de fuente o de micrófono EN CALIENTE, sin parar ni reiniciar nada:** pasar
-   de cámara trasera a pantalla (o al revés), encender/apagar el micrófono, o apagar
-   el vídeo del todo (dejando solo audio), se nota en el enlace del espectador en
-   cuestión de un segundo. Solo puede haber una cámara/pantalla activa a la vez (nunca
-   las dos cámaras ni cámara+pantalla juntas) — por eso los tres botones de fuente se
-   comportan como un selector, pero con la posibilidad de dejarlos los tres apagados: al
-   marcar uno se desmarca el anterior, y tocar el que ya está activo lo apaga sin
-   marcar ningún otro. Cambiar A pantalla (tanto al empezar como más tarde) siempre
-   vuelve a pedir la confirmación del sistema para grabarla: es una limitación de
-   Android, no se puede reutilizar un permiso de captura de pantalla anterior. Cada
-   espectador se entera al instante de si hay vídeo y/o audio saliendo — con dos
-   iconos sobre el vídeo (🎥/🎙️ tachados) que aparecen y desaparecen solos en cuanto
-   apagas o enciendes la cámara/pantalla o el micrófono, tanto si ya estaban viendo
-   como si se conectan después.
-7. También puedes parar la transmisión en cualquier momento desde la app o desde la
-   notificación persistente.
-
-### Calidad de imagen
-
-La cámara captura ahora a la resolución MÁXIMA que ofrezca el sensor, hasta 4K (2160p) —
-ya no se limita artificialmente a 1080p. El techo de bitrate sube a la vez con la
-resolución real que se esté usando (2,5 Mbps a resoluciones bajas, hasta 20 Mbps en 4K),
-para que más resolución venga siempre acompañada de más bits con los que dibujarla — subir
-solo la resolución sin subir el bitrate es lo que produce pixelado, no lo arregla. Siguen
-siendo techos, no mínimos fijos: si la red no da para tanto, WebRTC reduce el bitrate
-automáticamente para no cortar la transmisión, y reparte el recorte entre nitidez y
-fluidez según haga falta en cada momento (nunca sacrifica siempre lo mismo) — se probaron
-los dos extremos (priorizar solo nitidez, priorizar solo fluidez) y ambos se notaban mal
-de una manera distinta con 4K de por medio: uno se veía nítido pero a saltos, el otro
-fluido pero pixelado. Ninguno de estos ajustes le pide más al hardware del móvil que los
-otros — es el mismo techo de bitrate y la misma resolución de captura, solo cambia cómo se
-reparten cuando la red no da para todo.
-
-Ten en cuenta que grabar en 4K exige bastante más al procesador/GPU del móvil que 1080p —
-en emisiones largas puede notarse más calentamiento y más consumo de batería que antes. Si
-prefieres priorizar autonomía/temperatura sobre nitidez máxima, se puede volver a bajar el
-techo de resolución (`MAX_CAPTURE_WIDTH`/`MAX_CAPTURE_HEIGHT` en `WebRtcClient.kt`).
-
-### Calidad de audio
-
-El micrófono se manda con la calidad y la limpieza como prioridad, no como algo secundario
-al vídeo: se piden explícitamente las mejoras de audio de WebRTC (cancelación de eco,
-control automático de ganancia, supresión de ruido y filtro de graves, con la versión más
-nueva de cada algoritmo cuando el móvil la soporta) y se sube el techo de bitrate del códec
-Opus muy por encima de su valor por defecto (pensado de fábrica para ahorrar red, no para
-sonar lo mejor posible), además de activar la recuperación de paquetes perdidos
-(`useinbandfec`) y desactivar el "ahorro en los silencios" (`usedtx`), que a veces se nota
-como un pequeño corte al retomar la voz. El resultado: voz nítida y sin ruido de fondo, con
-menos cortes/robotización si la red va regular — a cambio de algo más de bitrate dedicado al
-audio que antes, que en la práctica es una cantidad pequeña comparada con la del vídeo.
-
-### Vista para el espectador
-
-Quien ve la transmisión puede girar la imagen con los botones ⟲ (izquierda) y ⟳
-(derecha) que aparecen sobre el vídeo — cada toque gira 90° más en ese sentido, tantas
-veces como haga falta hasta encontrar el ángulo correcto (útil si quien emite sujeta el
-móvil en un ángulo distinto al que le viene bien a quien mira). También tiene su propio
-control de sonido (botón 🔊/🔇 + regla de volumen, abajo a la derecha del vídeo):
-silenciar o graduar el volumen ahí es cosa de cada espectador, no afecta a los demás ni a
-quien emite. Nada de esto cambia nada en el móvil que emite, solo cómo se ve/oye en ese
-navegador en concreto.
-
-Arriba a la izquierda y a la derecha del vídeo aparecen, solo cuando hace falta, dos
-iconos de "sin señal" (una cámara 🎥 y un micrófono 🎙️, cada uno con una raya cruzada,
-al estilo de Zoom/Meet): avisan de si quien emite tiene el vídeo y/o el micrófono
-apagados en ese momento, en vez de dejar la imagen congelada sin explicación. Se
-actualizan solos y al instante en cuanto quien emite cambia de fuente o de micrófono, sin
-que el espectador tenga que recargar la página — esto SÍ viaja por el servidor de
-señalización (a diferencia del vídeo/audio, que va directo), porque es justo el tipo de
-aviso pequeño para el que existe ese servidor.
-
-Si la sala tiene contraseña, el navegador la pide con un formulario propio en cuanto
-detecta que hace falta (no hace falta compartir la contraseña dentro del enlace) —si la
-escribe mal, puede volver a intentarlo sin recargar la página.
-
-Una sala = un móvil emitiendo. Pueden verla varias personas a la vez.
-
-**Compatibilidad con Safari:** la página del espectador incluye un arreglo para un fallo
-conocido de Safari/WebKit con páginas que solo RECIBEN vídeo/audio sin mandar nada propio
-(como esta) — sin ese arreglo, Safari a veces se queda sin conectar nunca, sin ningún error
-visible, aunque en Chrome/Firefox funcione perfectamente. Si algún espectador en Safari
-sigue sin ver nada después de esto, comprueba primero que abrió el enlace directamente en
-Safari (no dentro del navegador integrado de WhatsApp/Instagram/etc. al tocar el enlace
-desde esa app — ese navegador integrado no siempre soporta WebRTC igual de bien).
-
-### Chat en directo
-
-Debajo del vídeo (en el navegador) o bajando del todo en la app (en la tarjeta **💬 Chat
-en directo**, que aparece en cuanto la emisión está confirmada como en directo) hay un chat
-compartido: lo ve todo el mundo a la vez — el anfitrión y cada espectador conectado —, como
-el chat de cualquier directo normal. No es un mensaje privado al anfitrión: si un
-espectador escribe algo, también lo ven los demás espectadores, no solo quien emite.
-
-Cualquier espectador puede poner un nombre (campo "Tu nombre", opcional — el navegador lo
-recuerda para la próxima vez que entre; si lo deja en blanco aparece como "Invitado"). El
-anfitrión puede tanto leer como responder desde la misma tarjeta de la app. Los mensajes
-del anfitrión se distinguen con un borde amarillo y la etiqueta "Anfitrión". El historial
-del chat es solo de la emisión actual: se vacía cada vez que se inicia una nueva
-transmisión, y no se guarda en ningún sitio una vez terminada (no hay base de datos: los
-mensajes viajan por el mismo servidor de señalización que el resto de avisos pequeños,
-igual que los iconos de "sin señal", nunca por el vídeo/audio en sí).
-
-### Servidor TURN (Cloudflare Realtime)
-
-Con redes normales (WiFi doméstica, datos móviles) la conexión directa entre el móvil y
-quien mira funciona solo con los servidores STUN públicos incluidos. Pero en redes con NAT
-restrictivo (datos móviles de algunos operadores, WiFis corporativas...) esa conexión
-directa puede no llegar a establecerse nunca — se ve "En directo" pero la imagen queda en
-negro y sin sonido, porque ninguno de los dos lados consigue encontrar al otro. Para esos
-casos el servidor puede repartir credenciales de un servidor TURN (que hace de repetidor)
-usando el servicio gratuito de Cloudflare Realtime (1000 GB/mes gratis):
-
-1. Crea una "TURN Key" en el panel de Cloudflare (sección Realtime/Calls) — te da un
-   **Key ID** y un **API Token**.
-2. En Render (o donde tengas desplegado el servidor): **Environment → Add Environment
-   Variable** y añade `CF_TURN_KEY_ID` y `CF_TURN_API_TOKEN` con esos valores. No los
-   compartas ni los subas a git — solo viven como variables de entorno del servidor.
-3. Redespliega el servicio para que recoja las nuevas variables.
-
-Con eso configurado, tanto la app como `watch.html` piden automáticamente credenciales
-TURN de corta duración a `/turn-credentials` antes de conectar, y las añaden a las que ya
-tenían de STUN. El secreto (`CF_TURN_API_TOKEN`) nunca sale del servidor: lo único que
-viaja al móvil o al navegador son credenciales ya generadas y de validez limitada (24h). Si
-no configuras esas variables, todo sigue funcionando igual que antes, solo con STUN.
-
-## Limitaciones conocidas
-
-- **Una emisión por sala.** Si dos móviles intentan usar la misma sala a la vez, el
-  segundo recibe un error. Usa nombres de sala distintos si vais a emitir varias
-  personas.
-- **La contraseña de sala es una protección básica**, no cifrado — evita que cualquiera
-  que adivine el nombre de la sala pueda verla, pero el servidor la comprueba en texto
-  plano (sin más cifrado que el de la propia conexión HTTPS/WSS). No la uses para
-  contenido realmente sensible.
-- No se ha podido compilar/ejecutar el proyecto en este entorno de trabajo (sin acceso a
-  los repositorios de Android), así que, aunque el código se ha escrito con mucho
-  cuidado siguiendo las APIs estándar de Android/WebRTC, es posible que necesites algún
-  ajuste menor al compilarlo por primera vez en Android Studio.
+</details>

@@ -124,6 +124,12 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent.createChooser(intent, "Compartir enlace"))
         }
 
+        binding.btnChatHide.setOnClickListener { setChatHidden(true) }
+        binding.btnChatShow.setOnClickListener { setChatHidden(false) }
+        // Deja siempre sitio debajo del contenido para el chat flotante (o su
+        // burbuja), así nada queda tapado: se puede bajar hasta el final igual.
+        binding.cardChat.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> updateScrollPadding() }
+
         binding.btnSendChat.setOnClickListener { sendChatFromInput() }
         binding.inputChatMessage.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEND || actionId == EditorInfo.IME_ACTION_DONE) {
@@ -151,6 +157,59 @@ class MainActivity : AppCompatActivity() {
 
     private var renderedChatCount = 0
 
+    // ---- Chat flotante: visible encima de la pantalla o plegado en una burbuja ----
+
+    private var chatLive = false
+    private var chatHidden = false
+    private var unreadCount = 0
+
+    private fun setChatHidden(hidden: Boolean) {
+        chatHidden = hidden
+        if (!hidden) {
+            unreadCount = 0
+            scrollChatToBottom()
+        } else {
+            hideKeyboard()
+        }
+        updateChatVisibility()
+    }
+
+    private fun updateChatVisibility() {
+        val gone = android.view.View.GONE
+        val visible = android.view.View.VISIBLE
+        binding.cardChat.visibility = if (chatLive && !chatHidden) visible else gone
+        binding.chatFab.visibility = if (chatLive && chatHidden) visible else gone
+        binding.txtChatUnread.visibility = if (chatLive && chatHidden && unreadCount > 0) visible else gone
+        binding.txtChatUnread.text = if (unreadCount > 99) "99+" else unreadCount.toString()
+        updateScrollPadding()
+    }
+
+    private fun updateScrollPadding() {
+        val bottom = when {
+            binding.cardChat.visibility == android.view.View.VISIBLE -> binding.cardChat.height + dp(24)
+            binding.chatFab.visibility == android.view.View.VISIBLE -> dp(96)
+            else -> 0
+        }
+        if (binding.scrollMain.paddingBottom != bottom) {
+            binding.scrollMain.post { binding.scrollMain.setPadding(0, 0, 0, bottom) }
+        }
+    }
+
+    private fun scrollChatToBottom() {
+        // scrollTo y no fullScroll(): fullScroll mueve el foco al ScrollView y Android le
+        // pinta un resaltado gris de foco encima de los mensajes.
+        binding.chatScroll.post {
+            val bottom = binding.chatScroll.getChildAt(0)?.height ?: 0
+            binding.chatScroll.smoothScrollTo(0, bottom)
+        }
+    }
+
+    private fun hideKeyboard() {
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+        imm.hideSoftInputFromWindow(binding.inputChatMessage.windowToken, 0)
+        binding.inputChatMessage.clearFocus()
+    }
+
     private fun observeChat() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -166,10 +225,18 @@ class MainActivity : AppCompatActivity() {
                     }
                     // Solo añadimos los mensajes NUEVOS desde la última vez — evita reconstruir
                     // toda la lista de vistas en cada mensaje si el chat ya lleva un rato activo.
+                    var newFromOthers = 0
                     for (i in renderedChatCount until messages.size) {
                         binding.chatMessagesContainer.addView(buildChatBubble(messages[i]))
+                        if (!messages[i].fromHost) newFromOthers++
                     }
+                    val added = messages.size > renderedChatCount
                     renderedChatCount = messages.size
+                    if (added) scrollChatToBottom()
+                    if (chatHidden && newFromOthers > 0) {
+                        unreadCount += newFromOthers
+                        updateChatVisibility()
+                    }
                 }
             }
         }
@@ -444,10 +511,21 @@ class MainActivity : AppCompatActivity() {
                         loadQrIfNeeded(state.viewerUrl)
                         // El chat solo tiene sentido con la emisión ya en directo de verdad
                         // (señalización confirmada) — antes de eso no hay a quién mandarle nada.
-                        binding.cardChat.visibility = android.view.View.VISIBLE
+                        if (!chatLive) {
+                            chatLive = true
+                            updateChatVisibility()
+                            // Al entrar en directo lo primero que hace falta es el enlace/QR
+                            // para compartirlo: lo traemos a la vista, por encima del chat.
+                            binding.scrollMain.postDelayed({
+                                binding.scrollMain.smoothScrollTo(0, binding.cardShare.top - dp(12))
+                            }, 700)
+                        }
                     } else if (!state.isRunning) {
                         binding.cardShare.visibility = android.view.View.GONE
-                        binding.cardChat.visibility = android.view.View.GONE
+                        chatLive = false
+                        chatHidden = false
+                        unreadCount = 0
+                        updateChatVisibility()
                         binding.chatMessagesContainer.removeAllViews()
                         renderedChatCount = 0
                         setInputsEnabled(true)
