@@ -591,8 +591,17 @@
     } catch (e) { /* nos quedamos con el valor típico */ }
   }
 
+  // Compartiendo PANTALLA la imagen ya sale del móvil con bastante retraso (la
+  // captura de pantalla tarda más que el micrófono), así que el sonido no llega
+  // tarde y no hay que retrasar la imagen: con el retraso de la cámara el sonido
+  // se adelantaba ~340 ms (medido con destellos y pitidos en el propio móvil).
+  // La app dice qué fuente emite en el mensaje 'state' (msg.source).
+  const SCREEN_AUDIO_LAG_MS = -55;
+  let videoSource = null;
+
   function videoDelayMs() {
-    return MIC_LATENCY_MS + outputLatencyMs;
+    const lag = videoSource === 'SCREEN' ? SCREEN_AUDIO_LAG_MS : MIC_LATENCY_MS;
+    return Math.max(0, lag + outputLatencyMs);
   }
 
   // Devuelve una pista de vídeo que es la recibida, pero videoDelayMs() más tarde.
@@ -812,6 +821,7 @@
         // AHORA MISMO, tanto al conectarnos como cada vez que cambia en caliente.
         knownHasVideo = !!msg.hasVideo;
         knownHasAudio = !!msg.hasAudio;
+        if (msg.source) videoSource = msg.source;
         updateSignalBadges();
         return;
       }
