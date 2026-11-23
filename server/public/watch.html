@@ -454,6 +454,7 @@
     if (vol > 0) lastVolume = vol;
     videoEl.play().catch(() => { /* el navegador seguirá pidiendo un toque directo sobre el vídeo */ });
     updateMuteIcon();
+    measureOutputLatency();
   }
 
   muteBtn.addEventListener('click', () => {
@@ -575,6 +576,23 @@
   // de por sí, la imagen) para que la diferencia sea justo la del móvil. Ambos
   // viajan por la misma conexión, así que el retraso de la red es el mismo.
   const VIDEO_PIPELINE_EXTRA_MS = 220;
+  // Lo que tarda ESTE dispositivo en sacar el sonido por altavoces o auriculares
+  // (en Bluetooth puede pasar de 200 ms). Ese retraso no aparece en getStats,
+  // así que se mide aparte y se descuenta: si no, el sonido se oye por detrás.
+  let outputLatencyMs = 40; // valor típico mientras no se pueda medir
+  let outputLatencyMeasured = false;
+  async function measureOutputLatency() {
+    if (outputLatencyMeasured || typeof AudioContext === 'undefined') return;
+    outputLatencyMeasured = true;
+    try {
+      const ac = new AudioContext();
+      await ac.resume();
+      await new Promise((r) => setTimeout(r, 300)); // da tiempo a que lo calcule
+      const s = (ac.outputLatency || 0) + (ac.baseLatency || 0);
+      if (s > 0 && s < 1) outputLatencyMs = Math.round(s * 1000);
+      ac.close();
+    } catch (e) { /* nos quedamos con el valor típico */ }
+  }
   const SYNC_MIN_CHANGE_MS = 25;
   const MAX_TARGET_MS = 1500;
   let videoReceiver = null;
@@ -667,10 +685,11 @@
     const gapNow = audio.real - video.real;
     realGap = realGap === null ? gapNow : realGap * 0.8 + gapNow * 0.2;
     if (audioTargetMs > 0 || videoTargetMs > 0) {
-      gapBias += 0.15 * (VIDEO_PIPELINE_EXTRA_MS - realGap);
+      gapBias += 0.15 * ((VIDEO_PIPELINE_EXTRA_MS - outputLatencyMs) - realGap);
       gapBias = Math.max(-150, Math.min(150, gapBias));
     }
-    const wantedGap = VIDEO_PIPELINE_EXTRA_MS + gapBias;
+    const targetGap = VIDEO_PIPELINE_EXTRA_MS - outputLatencyMs;
+    const wantedGap = targetGap + gapBias;
     let newAudio = 0, newVideo = 0;
     if (natural.audio - natural.video < wantedGap) {
       newAudio = natural.video + wantedGap;  // lo normal: retrasar el sonido
@@ -681,7 +700,7 @@
     newVideo = Math.round(Math.min(MAX_TARGET_MS, newVideo));
 
     const h = window.__qsSync.history;
-    h.push({ t: Date.now(), natA: Math.round(audio.nat), natV: Math.round(video.nat), realA: Math.round(audio.real), realV: Math.round(video.real), aT: audioTargetMs, vT: videoTargetMs, gap: Math.round(realGap), bias: Math.round(gapBias) });
+    h.push({ t: Date.now(), natA: Math.round(audio.nat), natV: Math.round(video.nat), realA: Math.round(audio.real), realV: Math.round(video.real), aT: audioTargetMs, vT: videoTargetMs, gap: Math.round(realGap), bias: Math.round(gapBias), out: outputLatencyMs });
     if (h.length > 300) h.shift();
     if (syncDebug) console.log('[sync] natural', Math.round(audio.nat), Math.round(video.nat), '· real', Math.round(audio.real), Math.round(video.real), '· targets', audioTargetMs, videoTargetMs);
 
