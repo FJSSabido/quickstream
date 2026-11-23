@@ -18,7 +18,11 @@ object QrUtils {
     suspend fun fetchQrBitmap(text: String, sizePx: Int = 400): Bitmap? = withContext(Dispatchers.IO) {
         try {
             val encoded = URLEncoder.encode(text, "UTF-8")
-            val url = URL("https://api.qrserver.com/v1/create-qr-code/?size=${sizePx}x${sizePx}&data=$encoded")
+            // En los colores de la app: módulos ocaso sobre fondo tinta.
+            val url = URL(
+                "https://api.qrserver.com/v1/create-qr-code/?size=${sizePx}x${sizePx}" +
+                    "&color=2A1450&bgcolor=F2EAFF&margin=0&data=$encoded"
+            )
             val conn = url.openConnection() as HttpURLConnection
             conn.connectTimeout = 6000
             conn.readTimeout = 6000

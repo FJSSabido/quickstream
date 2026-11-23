@@ -1,20 +1,30 @@
-<!-- Icono: cámara en amarillo fosforito sobre el morado de la app (los mismos
-     colores que los botones de encendido/apagado), con el objetivo en morado. -->
+<!-- Icono con el estilo de El Soñadero: cámara amarilla luciérnaga sobre ciruela,
+     con el objetivo en ciruela y dos destellos (amarillo y bruma) de "en directo". -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- Cuerpo y visor -->
     <path
-        android:fillColor="#E4FF00"
-        android:pathData="M34,40 h30 l6,-8 h10 a4,4 0 0 1 4,4 v44 a4,4 0 0 1 -4,4 H28 a4,4 0 0 1 -4,-4 V44 a4,4 0 0 1 4,-4 h6 Z" />
+        android:fillColor="#E4FF1A"
+        android:pathData="M46,38 h12 a3,3 0 0 1 3,3 v3 h11 a6,6 0 0 1 6,6 v22 a6,6 0 0 1 -6,6 H36 a6,6 0 0 1 -6,-6 V50 a6,6 0 0 1 6,-6 h7 v-3 a3,3 0 0 1 3,-3 z" />
+    <!-- Objetivo -->
     <path
-        android:fillColor="#6D3FE0"
-        android:pathData="M54,60 m-14,0 a14,14 0 1,0 28,0 a14,14 0 1,0 -28,0" />
+        android:fillColor="#3B1D6E"
+        android:pathData="M54,61 m-11,0 a11,11 0 1,0 22,0 a11,11 0 1,0 -22,0" />
     <path
-        android:fillColor="#E4FF00"
-        android:pathData="M54,60 m-8,0 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0" />
+        android:fillColor="#E4FF1A"
+        android:pathData="M54,61 m-5.5,0 a5.5,5.5 0 1,0 11,0 a5.5,5.5 0 1,0 -11,0" />
+    <!-- Piloto -->
     <path
-        android:fillColor="#6D3FE0"
-        android:pathData="M30,46 h8 v5 h-8 Z" />
+        android:fillColor="#3B1D6E"
+        android:pathData="M71,51 m-2.2,0 a2.2,2.2 0 1,0 4.4,0 a2.2,2.2 0 1,0 -4.4,0" />
+    <!-- Destellos, como las estrellas de El Soñadero -->
+    <path
+        android:fillColor="#E4FF1A"
+        android:pathData="M76,25 l1.6,4.2 4.4,1.6 -4.4,1.6 -1.6,4.2 -1.6,-4.2 -4.4,-1.6 4.4,-1.6z" />
+    <path
+        android:fillColor="#B9A6D9"
+        android:pathData="M84,38 l1,2.6 2.6,1 -2.6,1 -1,2.6 -1,-2.6 -2.6,-1 2.6,-1z" />
 </vector>

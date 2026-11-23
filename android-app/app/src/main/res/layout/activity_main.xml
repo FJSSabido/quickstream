@@ -19,21 +19,28 @@
         android:orientation="vertical"
         android:padding="20dp">
 
+        <!-- Cabecera centrada, con el mismo estilo de título que El Soñadero:
+             serif cursiva en negrita, amarillo luciérnaga. -->
         <TextView
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:fontFamily="serif"
+            android:gravity="center"
             android:text="QuickStream"
-            android:textColor="@color/text_primary"
-            android:textSize="26sp"
-            android:textStyle="bold" />
+            android:textColor="@color/state_on"
+            android:textSize="40sp"
+            android:textStyle="bold|italic" />
 
         <TextView
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:text="Comparte tu cámara o pantalla mediante una URL"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="6dp"
+            android:gravity="center"
+            android:text="Tu cámara o tu pantalla, en directo con un enlace"
             android:textColor="@color/text_secondary"
-            android:textSize="13sp" />
+            android:textSize="14sp" />
 
         <!-- Tarjeta: Conexión. Oculta: el servidor, la sala y la contraseña se rellenan
              solos (servidor por defecto + sala aleatoria guardada), así quien usa la app
@@ -128,20 +135,23 @@
             android:padding="18dp">
 
             <TextView
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="🎛️ Fuente y audio"
+                android:fontFamily="serif"
+                android:gravity="center"
+                android:text="Fuente y audio"
                 android:textColor="@color/text_primary"
-                android:textSize="14sp"
-                android:textStyle="bold" />
+                android:textSize="19sp"
+                android:textStyle="bold|italic" />
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:text="Toca para cambiar sin cortar la transmisión. Solo una cámara/pantalla activa a la vez."
+                android:layout_marginTop="4dp"
+                android:gravity="center"
+                android:text="Cambia de cámara o micrófono sin cortar la emisión"
                 android:textColor="@color/text_secondary"
-                android:textSize="11sp" />
+                android:textSize="12sp" />
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -243,11 +253,15 @@
             android:id="@+id/btnStartStop"
             android:letterSpacing="0"
             android:layout_width="match_parent"
-            android:layout_height="56dp"
+            android:layout_height="60dp"
             android:layout_marginTop="22dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
             android:text="Iniciar transmisión"
-            android:textSize="16sp"
-            app:cornerRadius="14dp" />
+            android:textAllCaps="false"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            app:cornerRadius="30dp" />
 
         <TextView
             android:id="@+id/txtStatus"
@@ -274,52 +288,35 @@
                  compartirlo con antelación); el dado crea uno nuevo para que cada
                  transmisión pueda tener su propia URL. Con la emisión en marcha el
                  dado se oculta: cambiar de sala cortaría a quien ya está viendo. -->
-            <LinearLayout
+            <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="🔗 Enlace para ver la transmisión"
-                    android:textColor="@color/text_primary"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/btnNewLink"
-                    android:layout_width="wrap_content"
-                    android:layout_height="40dp"
-                    android:layout_marginStart="8dp"
-                    android:background="@drawable/bg_chat_hide"
-                    android:contentDescription="Crear un enlace nuevo"
-                    android:gravity="center"
-                    android:paddingHorizontal="14dp"
-                    android:text="🎲 Nuevo"
-                    android:textColor="@color/text_primary"
-                    android:textSize="13sp" />
-            </LinearLayout>
+                android:fontFamily="serif"
+                android:gravity="center"
+                android:text="Enlace de la emisión"
+                android:textColor="@color/text_primary"
+                android:textSize="19sp"
+                android:textStyle="bold|italic" />
 
             <TextView
                 android:id="@+id/txtViewerUrl"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="6dp"
+                android:gravity="center"
                 android:textColor="@color/accent_light"
                 android:textIsSelectable="true"
                 android:textSize="14sp" />
 
+            <!-- QR en los colores de la app, con marco amarillo -->
             <ImageView
                 android:id="@+id/imgQr"
-                android:layout_width="180dp"
-                android:layout_height="180dp"
-                android:layout_marginTop="14dp"
+                android:layout_width="200dp"
+                android:layout_height="200dp"
+                android:layout_marginTop="16dp"
                 android:layout_gravity="center"
-                android:background="#FFFFFF"
-                android:padding="8dp"
+                android:background="@drawable/bg_qr"
+                android:padding="14dp"
                 android:visibility="gone" />
 
             <LinearLayout
@@ -330,30 +327,55 @@
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnCopyUrl"
-                    android:textColor="@color/accent_light"
-                    android:textAllCaps="false"
-                    android:textSize="15sp"
-                    android:letterSpacing="0"
                     style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
+                    android:layout_height="52dp"
                     android:layout_weight="1"
                     android:layout_marginEnd="6dp"
-                    android:text="Copiar" />
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:letterSpacing="0"
+                    android:text="Copiar"
+                    android:textAllCaps="false"
+                    android:textColor="@color/text_primary"
+                    android:textSize="15sp"
+                    app:cornerRadius="26dp"
+                    app:strokeColor="@color/accent"
+                    app:strokeWidth="1.5dp" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnShareUrl"
-                    android:textAllCaps="false"
-                    android:textSize="15sp"
-                    android:paddingStart="4dp"
-                    android:paddingEnd="4dp"
-                    android:letterSpacing="0"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
+                    android:layout_height="52dp"
                     android:layout_weight="1"
                     android:layout_marginStart="6dp"
-                    android:text="Compartir" />
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:letterSpacing="0"
+                    android:paddingStart="4dp"
+                    android:paddingEnd="4dp"
+                    android:text="Compartir"
+                    android:textAllCaps="false"
+                    android:textSize="15sp"
+                    app:backgroundTint="@color/accent"
+                    app:cornerRadius="26dp" />
             </LinearLayout>
+
+            <!-- Antes de emitir: crea un enlace nuevo para esta transmisión. Con la
+                 emisión en marcha se oculta (cambiar de sala cortaría a quien ya ve). -->
+            <TextView
+                android:id="@+id/btnNewLink"
+                android:layout_width="wrap_content"
+                android:layout_height="44dp"
+                android:layout_gravity="center"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_chat_hide"
+                android:contentDescription="Crear un enlace nuevo"
+                android:gravity="center"
+                android:paddingHorizontal="22dp"
+                android:text="🎲  Enlace nuevo"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp" />
         </LinearLayout>
 
         <TextView
@@ -400,10 +422,11 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="💬 Chat en directo"
+                android:fontFamily="serif"
+                android:text="Chat en directo"
                 android:textColor="@color/text_primary"
-                android:textSize="14sp"
-                android:textStyle="bold" />
+                android:textSize="17sp"
+                android:textStyle="bold|italic" />
 
             <TextView
                 android:id="@+id/btnChatHide"

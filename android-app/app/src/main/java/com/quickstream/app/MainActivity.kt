@@ -278,6 +278,12 @@ class MainActivity : AppCompatActivity() {
             android.text.style.StyleSpan(android.graphics.Typeface.BOLD),
             0, name.length, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
         )
+        if (msg.fromHost) {
+            spannable.setSpan(
+                android.text.style.ForegroundColorSpan(ContextCompat.getColor(this, R.color.state_on)),
+                0, name.length, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+        }
         bubble.text = spannable
 
         return bubble
@@ -456,7 +462,7 @@ class MainActivity : AppCompatActivity() {
     private fun launchBroadcastService(projectionData: Intent?) {
         pendingStart = true
         binding.btnStartStop.text = "Detener"
-        tintButton(binding.btnStartStop, on = true)
+        tintStartButton(running = true)
         binding.txtStatus.text = "Conectando…"
 
         val intent = Intent(this, BroadcastService::class.java).apply {
@@ -481,7 +487,7 @@ class MainActivity : AppCompatActivity() {
         startService(intent)
         setInputsEnabled(true)
         binding.btnStartStop.text = "Iniciar transmisión"
-        tintButton(binding.btnStartStop, on = false)
+        tintStartButton(running = false)
         showPreviewLink()
     }
 
@@ -514,8 +520,23 @@ class MainActivity : AppCompatActivity() {
         val textColorRes = if (on) R.color.state_on_text else R.color.state_off_text
         button.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, bgColorRes))
         button.setTextColor(ContextCompat.getColor(this, textColorRes))
+        // Apagado: ciruela con un borde violeta fino, para que se distinga bien
+        // de la tarjeta; encendido: amarillo liso.
+        button.strokeColor = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.accent))
+        button.strokeWidth = if (on) 0 else dp(1) + dp(1) / 2
         button.isEnabled = enabled
         button.alpha = if (enabled) 1f else 0.45f
+    }
+
+    /** Iniciar = violeta; emitiendo ("Detener") = amarillo, como lo encendido. */
+    private fun tintStartButton(running: Boolean) {
+        tintButton(binding.btnStartStop, on = running)
+        if (!running) {
+            binding.btnStartStop.backgroundTintList =
+                ColorStateList.valueOf(ContextCompat.getColor(this, R.color.accent))
+            binding.btnStartStop.setTextColor(ContextCompat.getColor(this, R.color.on_accent))
+            binding.btnStartStop.strokeWidth = 0
+        }
     }
 
     private fun updateSourceButtonStates() {
@@ -541,7 +562,7 @@ class MainActivity : AppCompatActivity() {
                     // (fase "Conectando…"). Así el botón dice "Detener" durante todo el
                     // tiempo real que algo está grabando, no solo cuando ya hay espectadores.
                     binding.btnStartStop.text = if (state.isRunning) "Detener" else "Iniciar transmisión"
-                    tintButton(binding.btnStartStop, on = state.isRunning)
+                    tintStartButton(running = state.isRunning)
                     binding.txtStatus.text = state.error ?: state.statusText
 
                     if (state.isLive && state.viewerUrl != null) {

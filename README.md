@@ -104,9 +104,9 @@ Escanea el mismo código QR y vuelve a instalar. Siempre descarga la última ver
 
 ## Colores
 
-Fondo de noche con morado y amarillo fosforito: amarillo es *encendido*, morado es *apagado*, en los botones, el chat y el icono.
+La misma paleta que El Soñadero: noche púrpura con luz de luciérnaga. El amarillo marca lo que está *encendido* (la cámara o el micrófono que emiten, el botón «Detener»), el violeta las acciones y el ciruela lo que está apagado. El título va en serif cursiva, como en El Soñadero.
 
-<p align="center"><img src="assets/paleta.svg" alt="Paleta: encendido #E4FF00, apagado #6D3FE0, enlaces #B79CFF, tarjetas #1A1528, en directo #4ADE80" width="100%"></p>
+<p align="center"><img src="assets/paleta.svg" alt="Paleta: luciérnaga #E4FF1A, violeta #8B5CF6, ciruela #3B1D6E, ocaso #2A1450, bruma #B9A6D9" width="100%"></p>
 
 ---
 

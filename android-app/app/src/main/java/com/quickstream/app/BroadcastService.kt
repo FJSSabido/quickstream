@@ -205,7 +205,9 @@ class BroadcastService : Service() {
         super.onDestroy()
         releaseLocks()
         serviceScope.cancel()
-        BroadcastEngine.stop()
+        // Solo si sigue en marcha: si el motor ya se paró solo con un error (sala
+        // ocupada, sin red...), pararlo otra vez borraría ese mensaje de la pantalla.
+        if (BroadcastEngine.stateFlow.value.isRunning) BroadcastEngine.stop()
     }
 
     /**

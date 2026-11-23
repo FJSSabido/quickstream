@@ -79,6 +79,9 @@ object BroadcastEngine {
     private var sessionRoom = ""
     private var sessionPassword = ""
     private var hostToken: String? = null
+    // Donde se guarda el token de la sala, para poder retomarla si la app se
+    // cierra sin despedirse del servidor (ver startAfterTurnLookup).
+    private var prefs: android.content.SharedPreferences? = null
     // true en cuanto el servidor ha aceptado esta emisión al menos una vez: a
     // partir de ahí, un corte se reintenta; antes (fallo al conectar de primeras)
     // se informa del error y se para, como siempre.
@@ -100,6 +103,7 @@ object BroadcastEngine {
         chatMessages.value = emptyList() // sala/emisión nueva = chat nuevo, sin arrastrar el anterior
 
         val appContext = context.applicationContext
+        prefs = appContext.getSharedPreferences("quickstream_prefs", Context.MODE_PRIVATE)
         val viewerUrl = buildViewerUrl(serverUrl, room)
         stateFlow.value = BroadcastState(
             isRunning = true, isLive = false, statusText = "Conectando…", viewerUrl = viewerUrl,
@@ -170,11 +174,15 @@ object BroadcastEngine {
         sessionServerUrl = serverUrl
         sessionRoom = room
         sessionPassword = password
-        hostToken = null
+        // Si esta misma sala se quedó abierta en el servidor (la app se cerró o se
+        // reinstaló sin despedirse, y el servidor la guarda 30 s por si vuelve), se
+        // retoma con su token en vez de chocar con "la sala ya tiene una emisión".
+        val savedToken = prefs?.getString("hostToken_$room", null)
+        hostToken = savedToken
         everLive = false
         reconnectAttempt = 0
         reconnectPending = false
-        connectSignaling(resumeToken = null)
+        connectSignaling(resumeToken = savedToken)
     }
 
     /**
@@ -191,6 +199,7 @@ object BroadcastEngine {
             override fun onHostReady(viewerCount: Int, token: String?, resumed: Boolean, viewers: List<String>) {
                 if (signalingClient !== thisClient) return
                 hostToken = token
+                prefs?.edit()?.putString("hostToken_$sessionRoom", token)?.apply()
                 everLive = true
                 reconnectAttempt = 0
                 val client = webRtcClient
@@ -402,6 +411,8 @@ object BroadcastEngine {
         reconnectPending = false
         everLive = false
         hostToken = null
+        // Al terminar de verdad (con despedida al servidor) ya no hay nada que retomar.
+        if (signalingClient != null) prefs?.edit()?.remove("hostToken_$sessionRoom")?.apply()
         signalingClient?.disconnect(bye = true)
         signalingClient = null
         webRtcClient?.release()
