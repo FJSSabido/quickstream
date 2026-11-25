@@ -966,21 +966,56 @@
       // directo" todavía: eso se hace más abajo, en onconnectionstatechange,
       // que es la señal real de que hay conexión de verdad.
       gotStream = true;
+      // La app abre siempre un canal de vídeo, aunque se emita solo con micrófono.
+      // Mientras no lleguen imágenes esa pista está "muda", y si se mete en el
+      // <video> el navegador no arranca la reproducción esperando la primera
+      // imagen... y con ella también el sonido. Así que la imagen solo entra en
+      // el reproductor cuando las estadísticas de la conexión confirman que ya
+      // llegan imágenes (la pista no siempre se marca como "muda" mientras tanto).
+      const thisPc = pc;
+      if (ev.track.kind === 'video') {
+        whenVideoArrives(thisPc, ev.track, () => attachTrack(ev.track));
+        return;
+      }
+      attachTrack(ev.track);
+    };
+
+    function whenVideoArrives(thisPc, track, cb) {
+      let done = false;
+      let timer = null;
+      const go = () => {
+        if (done || pc !== thisPc) return;
+        done = true;
+        clearInterval(timer);
+        cb();
+      };
+      const check = async () => {
+        if (pc !== thisPc) { clearInterval(timer); return; }
+        try {
+          const stats = await thisPc.getStats(track);
+          stats.forEach((r) => { if (r.type === 'inbound-rtp' && (r.framesReceived || 0) > 0) go(); });
+        } catch (e) { /* ignorar */ }
+      };
+      timer = setInterval(check, 400);
+      check();
+    }
+
+    function attachTrack(track) {
       // Audio e imagen se juntan en un stream para el elemento <video>,
       // sustituyendo la pista anterior del mismo tipo si la hubiera; la imagen
       // pasa antes por la cola que la retrasa (ver delayVideoTrack). Se crea un
       // stream NUEVO y se vuelve a asignar cada vez: si solo se añadiera la pista
       // al stream que el <video> ya está reproduciendo, Chrome/Brave pueden no
       // enterarse de ella (pasaba con el audio: no sonaba).
-      let shown = ev.track;
-      if (ev.track.kind === 'video' && canDelayFrames) {
-        try { shown = delayVideoTrack(ev.track); } catch (e) { shown = ev.track; }
+      let shown = track;
+      if (track.kind === 'video' && canDelayFrames) {
+        try { shown = delayVideoTrack(track); } catch (e) { shown = track; }
       }
-      const tracks = remoteStream.getTracks().filter((t) => t.kind !== ev.track.kind);
+      const tracks = remoteStream.getTracks().filter((t) => t.kind !== track.kind);
       tracks.push(shown);
       remoteStream = new MediaStream(tracks);
       videoEl.srcObject = remoteStream;
-      if (knownHasVideo === null && ev.track.kind === 'video') {
+      if (knownHasVideo === null && track.kind === 'video') {
         knownHasVideo = true;
         updateSignalBadges();
       }
@@ -994,7 +1029,7 @@
           hideOverlay();
         };
       });
-    };
+    }
 
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'connected') {
