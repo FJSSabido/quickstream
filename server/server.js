@@ -315,9 +315,21 @@ wss.on('connection', (ws, req) => {
 
     if (ws.role === 'host') {
       if (msg.type === 'bye') {
-        // El anfitrión ha pulsado "Detener" a propósito: aquí no hay que esperar
-        // a ninguna reconexión, la emisión termina en el acto (ver 'close').
+        // El anfitrión ha pulsado "Detener" a propósito: la emisión termina AQUÍ,
+        // en el acto. Antes se esperaba al cierre del WebSocket, y a través del
+        // proxy de Render ese cierre llegaba unos 10 s tarde: los espectadores (y
+        // la grabación de OBS) tardaban eso en enterarse de que había terminado.
         ws.byeSent = true;
+        if (r.hostWs === ws) {
+          r.hostWs = null;
+          r.hostKey = null;
+          r.hostToken = null;
+          for (const viewer of r.viewers.values()) {
+            send(viewer, { type: 'host-offline' });
+          }
+          cleanupEmptyRoom(ws.roomId);
+        }
+        try { ws.terminate(); } catch { /* ignorar */ }
         return;
       }
       if ((msg.type === 'state' || msg.type === 'chat') && !msg.viewerId) {
