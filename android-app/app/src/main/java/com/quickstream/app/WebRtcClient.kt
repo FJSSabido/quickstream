@@ -2,11 +2,13 @@ package com.quickstream.app
 
 import android.content.Context
 import android.content.Intent
+import android.hardware.display.DisplayManager
 import android.media.MediaRecorder
 import android.media.projection.MediaProjection
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.Display
 import org.webrtc.AudioSource
 import org.webrtc.AudioTrack
 import org.webrtc.Camera2Enumerator
@@ -81,6 +83,7 @@ class WebRtcClient(
         private const val MAX_CAPTURE_WIDTH = 1920
         private const val MAX_CAPTURE_HEIGHT = 1080
         private const val TARGET_FPS = 30
+        private const val SCREEN_FPS = 20
     }
 
     private lateinit var eglBase: EglBase
@@ -145,6 +148,7 @@ class WebRtcClient(
     private lateinit var factory: PeerConnectionFactory
 
     private var videoCapturer: VideoCapturer? = null
+    private var displayListener: DisplayManager.DisplayListener? = null
     private var videoSource: VideoSource? = null
     private var surfaceTextureHelper: SurfaceTextureHelper? = null
     private var localVideoTrack: VideoTrack? = null
@@ -334,13 +338,61 @@ class WebRtcClient(
         surfaceTextureHelper = helper
 
         capturer.initialize(helper, context, source.capturerObserver)
-        val metrics = context.resources.displayMetrics
-        capturer.startCapture(metrics.widthPixels, metrics.heightPixels, 20)
-        currentCaptureWidth = metrics.widthPixels
-        currentCaptureHeight = metrics.heightPixels
+        val (w, h) = realScreenSize()
+        capturer.startCapture(w, h, SCREEN_FPS)
+        currentCaptureWidth = w
+        currentCaptureHeight = h
 
         localVideoTrack = factory.createVideoTrack("video0", source)
         pushVideoTrackToExistingSenders()
+        watchScreenRotation(capturer)
+    }
+
+    /** Tamaño real de la pantalla, incluida la barra de navegación, en su orientación actual. */
+    @Suppress("DEPRECATION")
+    private fun realScreenSize(): Pair<Int, Int> {
+        val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+        val metrics = android.util.DisplayMetrics()
+        dm.getDisplay(Display.DEFAULT_DISPLAY).getRealMetrics(metrics)
+        return metrics.widthPixels to metrics.heightPixels
+    }
+
+    /**
+     * La captura de pantalla se crea con el tamaño del momento (vertical). Si luego se
+     * gira el móvil (por ejemplo, para ver un vídeo en horizontal), Android encajaría la
+     * imagen apaisada dentro de ese marco vertical con grandes franjas negras, y en la
+     * web se vería pequeña aunque se pusiera a pantalla completa. Así que, al girar, se
+     * cambia también el tamaño de la captura (y el techo de bitrate a juego).
+     */
+    private fun watchScreenRotation(capturer: ScreenCapturerAndroid) {
+        unwatchScreenRotation()
+        val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+        val listener = object : DisplayManager.DisplayListener {
+            override fun onDisplayAdded(displayId: Int) {}
+            override fun onDisplayRemoved(displayId: Int) {}
+            override fun onDisplayChanged(displayId: Int) {
+                if (displayId != Display.DEFAULT_DISPLAY || videoCapturer !== capturer) return
+                val (w, h) = realScreenSize()
+                if (w == currentCaptureWidth && h == currentCaptureHeight) return
+                try {
+                    capturer.changeCaptureFormat(w, h, SCREEN_FPS)
+                    currentCaptureWidth = w
+                    currentCaptureHeight = h
+                    mainVideoSenders.values.forEach { applyBitrateLimits(it, w, h) }
+                } catch (e: Exception) {
+                    Log.w(TAG, "No se pudo adaptar la captura al giro de pantalla", e)
+                }
+            }
+        }
+        dm.registerDisplayListener(listener, mainHandler)
+        displayListener = listener
+    }
+
+    private fun unwatchScreenRotation() {
+        val listener = displayListener ?: return
+        val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+        dm.unregisterDisplayListener(listener)
+        displayListener = null
     }
 
     /**
@@ -401,6 +453,7 @@ class WebRtcClient(
     }
 
     private fun stopVideoCapture() {
+        unwatchScreenRotation()
         try { videoCapturer?.stopCapture() } catch (e: Exception) { /* ignorar */ }
         videoCapturer?.dispose()
         videoCapturer = null
