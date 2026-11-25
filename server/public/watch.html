@@ -159,6 +159,46 @@
     backdrop-filter: blur(2px);
   }
   .signal-badge.show { display: flex; }
+  /* Sin imagen (quien emite apagó la cámara o la pantalla): en vez de dejar el
+     último fotograma congelado, se tapa el vídeo con esta pantalla en los colores
+     de la app — un micrófono amarillo (lo "encendido" en la app) con ondas
+     violetas mientras sigue llegando el sonido. */
+  .audio-only {
+    position: absolute; inset: 0; display: none;
+    flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+    background: radial-gradient(circle at 50% 45%, #3b1d6e 0%, #22103d 45%, #1a0b2e 100%);
+    color: #b9a6d9; text-align: center; padding: 24px;
+  }
+  .audio-only.show { display: flex; }
+  .audio-only .mic {
+    position: relative; width: 112px; height: 112px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: #2a1450; border: 2px solid #e4ff1a;
+    box-shadow: 0 0 32px rgba(228,255,26,0.18);
+  }
+  .audio-only .mic svg { width: 52px; height: 52px; }
+  .audio-only .mic::before, .audio-only .mic::after {
+    content: ''; position: absolute; inset: -2px; border-radius: 50%;
+    border: 2px solid #8b5cf6; opacity: 0;
+    animation: audio-wave 2.4s ease-out infinite;
+  }
+  .audio-only .mic::after { animation-delay: 1.2s; }
+  @keyframes audio-wave {
+    0% { transform: scale(1); opacity: 0.7; }
+    100% { transform: scale(1.9); opacity: 0; }
+  }
+  .audio-only .audio-title {
+    font-family: Georgia, 'Times New Roman', serif; font-style: italic;
+    font-size: 20px; font-weight: 700; color: #f2eaff;
+  }
+  .audio-only .audio-sub { font-size: 13px; margin-top: -10px; }
+  /* Micrófono también apagado: sin ondas y con el icono atenuado. */
+  .audio-only.muted .mic { border-color: #4a2a85; box-shadow: none; }
+  .audio-only.muted .mic::before, .audio-only.muted .mic::after { display: none; }
+  .audio-only.muted .mic svg { opacity: 0.45; }
+  @media (prefers-reduced-motion: reduce) {
+    .audio-only .mic::before, .audio-only .mic::after { animation: none; }
+  }
   .signal-badge::after {
     content: ''; position: absolute; width: 3px; height: 26px;
     background: #f87171; border-radius: 2px; transform: rotate(45deg);
@@ -275,6 +315,18 @@
   <div class="main-area">
     <div class="video-area">
       <video id="remoteVideo" playsinline autoplay muted></video>
+      <div id="audioOnly" class="audio-only" aria-live="polite">
+        <div class="mic">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#e4ff1a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="9" y="2" width="6" height="12" rx="3" fill="#e4ff1a"></rect>
+            <path d="M5 10v1a7 7 0 0 0 14 0v-1"></path>
+            <path d="M12 18v4"></path>
+            <path d="M8 22h8"></path>
+          </svg>
+        </div>
+        <div class="audio-title" id="audioOnlyTitle">Emisión solo con sonido</div>
+        <div class="audio-sub" id="audioOnlySub">Quien emite ha apagado la imagen. Sigues oyéndole.</div>
+      </div>
       <div id="fsViewerCount" class="fs-viewer-count" title="Espectadores conectados">👁 0</div>
       <button id="rotateCcwBtn" class="rotate-btn" type="button" title="Girar 90° a la izquierda" aria-label="Girar a la izquierda">⟲</button>
       <button id="rotateBtn" class="rotate-btn" type="button" title="Girar 90° a la derecha" aria-label="Girar a la derecha">⟳</button>
@@ -423,9 +475,26 @@
   let knownHasVideo = null;
   let knownHasAudio = null;
 
+  const audioOnlyEl = document.getElementById('audioOnly');
+  const audioOnlyTitleEl = document.getElementById('audioOnlyTitle');
+  const audioOnlySubEl = document.getElementById('audioOnlySub');
+
   function updateSignalBadges() {
-    noVideoBadge.classList.toggle('show', knownHasVideo === false);
+    // La cámara tachada ya no hace falta: la pantalla de "solo sonido" lo dice.
+    noVideoBadge.classList.remove('show');
     noAudioBadge.classList.toggle('show', knownHasAudio === false);
+    // Sin imagen: se tapa el último fotograma (que si no se quedaría congelado)
+    // con la pantalla de "solo sonido". Con la cámara de vuelta, desaparece sola.
+    const noVideo = knownHasVideo === false;
+    audioOnlyEl.classList.toggle('show', noVideo);
+    if (noVideo) {
+      const muted = knownHasAudio === false;
+      audioOnlyEl.classList.toggle('muted', muted);
+      audioOnlyTitleEl.textContent = muted ? 'Emisión en pausa' : 'Emisión solo con sonido';
+      audioOnlySubEl.textContent = muted
+        ? 'Quien emite ha apagado la imagen y el micrófono.'
+        : 'Quien emite ha apagado la imagen. Sigues oyéndole.';
+    }
   }
 
   function resetSignalBadges() {
