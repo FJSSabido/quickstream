@@ -131,6 +131,9 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent.createChooser(intent, "Compartir enlace"))
         }
 
+        binding.btnConversation.setOnClickListener { showConversationDialog() }
+        binding.btnEndConversation.setOnClickListener { BroadcastEngine.stopConversation() }
+
         binding.btnChatHide.setOnClickListener { setChatHidden(true) }
         binding.btnChatShow.setOnClickListener { setChatHidden(false) }
         // Deja siempre sitio debajo del contenido para el chat flotante (o su
@@ -152,6 +155,108 @@ class MainActivity : AppCompatActivity() {
         if (!BroadcastEngine.stateFlow.value.isRunning) showPreviewLink()
         observeState()
         observeChat()
+        observeConversation()
+    }
+
+    // ---- Modo conversación (ver y oír a otra persona aquí, sin acople) ----
+
+    private var rendererReady = false
+    private var attachedTrack: org.webrtc.VideoTrack? = null
+
+    /** Cuadro propio (dialog_conversation.xml) con la paleta y la letra de la app. */
+    private fun showConversationDialog() {
+        val dialogBinding = com.quickstream.app.databinding.DialogConversationBinding.inflate(layoutInflater)
+        // Si ya tienes copiado un enlace de QuickStream que no es el tuyo, se rellena solo.
+        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString()?.trim()
+        if (clip != null && clip.contains("/watch/") && clip != currentLink()) {
+            dialogBinding.inputConversationLink.setText(clip)
+            dialogBinding.inputConversationLink.setSelection(clip.length)
+        }
+        val dialog = androidx.appcompat.app.AlertDialog.Builder(this)
+            .setView(dialogBinding.root)
+            .create()
+        // Sin el marco blanco del diálogo estándar: solo se ve nuestra tarjeta.
+        // El margen deja ver el fondo a los lados, como las tarjetas de la pantalla.
+        dialog.window?.setBackgroundDrawable(
+            android.graphics.drawable.InsetDrawable(
+                android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT), dp(20)
+            )
+        )
+        dialogBinding.btnConversationCancel.setOnClickListener { dialog.dismiss() }
+        dialogBinding.btnConversationConnect.setOnClickListener {
+            val error = BroadcastEngine.startConversation(dialogBinding.inputConversationLink.text?.toString().orEmpty())
+            if (error != null) {
+                dialogBinding.inputConversationLink.error = error
+            } else {
+                dialog.dismiss()
+            }
+        }
+        dialog.show()
+    }
+
+    private fun observeConversation() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                BroadcastEngine.conversationState.collect { conv -> renderConversation(conv) }
+            }
+        }
+    }
+
+    private fun renderConversation(conv: ConversationState) {
+        val live = BroadcastEngine.stateFlow.value.isLive
+        binding.btnConversation.visibility =
+            if (live && !conv.active) android.view.View.VISIBLE else android.view.View.GONE
+        binding.cardConversation.visibility =
+            if (conv.active) android.view.View.VISIBLE else android.view.View.GONE
+        binding.txtConversationStatus.text = conv.status
+
+        if (!conv.active) {
+            detachRemoteVideo()
+            if (rendererReady) {
+                binding.remoteRenderer.release()
+                rendererReady = false
+            }
+            volumeControlStream = android.media.AudioManager.USE_DEFAULT_STREAM_TYPE
+            return
+        }
+
+        // Las teclas de volumen regulan cómo se oye a la otra persona.
+        volumeControlStream = android.media.AudioManager.STREAM_MUSIC
+        if (!rendererReady) {
+            val egl = BroadcastEngine.eglContext() ?: return
+            binding.remoteRenderer.init(egl, null)
+            binding.remoteRenderer.setScalingType(org.webrtc.RendererCommon.ScalingType.SCALE_ASPECT_FIT)
+            binding.remoteRenderer.setEnableHardwareScaler(true)
+            rendererReady = true
+        }
+        if (conv.remoteVideo !== attachedTrack) {
+            detachRemoteVideo()
+            conv.remoteVideo?.let {
+                try { it.addSink(binding.remoteRenderer); attachedTrack = it } catch (e: Exception) { /* pista ya liberada */ }
+            }
+        }
+        val showImage = attachedTrack != null && conv.remoteHasVideo
+        binding.txtRemoteAudioOnly.visibility = if (showImage) android.view.View.GONE else android.view.View.VISIBLE
+        binding.txtRemoteAudioOnly.text = when {
+            !conv.connected -> "⏳\nEsperando a la otra persona"
+            !conv.remoteHasAudio && !conv.remoteHasVideo -> "🎙️\nEn pausa"
+            else -> "🎙️\nSolo sonido"
+        }
+    }
+
+    private fun detachRemoteVideo() {
+        val track = attachedTrack ?: return
+        attachedTrack = null
+        // La pista puede estar ya liberada si la conexión se cerró: no pasa nada.
+        try { track.removeSink(binding.remoteRenderer) } catch (e: Exception) { /* ignorar */ }
+        if (rendererReady) binding.remoteRenderer.clearImage()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // Sin pantalla no se pinta nada; al volver, renderConversation la engancha otra vez.
+        detachRemoteVideo()
     }
 
     // ---- Chat compartido (anfitrión + todos los espectadores ven lo mismo) ----
@@ -599,6 +704,7 @@ class MainActivity : AppCompatActivity() {
 
                     updateSourceButtonStates()
                     updateAudioButtonStates()
+                    renderConversation(BroadcastEngine.conversationState.value)
                 }
             }
         }
@@ -620,6 +726,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        detachRemoteVideo()
+        if (rendererReady) {
+            binding.remoteRenderer.release()
+            rendererReady = false
+        }
         super.onDestroy()
         // La emisión sigue viva en el Service aunque se cierre la Activity;
         // solo se detiene si el usuario pulsa "Detener".

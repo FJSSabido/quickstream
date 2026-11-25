@@ -45,6 +45,18 @@ data class BroadcastState(
     val micEnabled: Boolean = true
 )
 
+/** Estado del modo conversación (ver ConversationClient). */
+data class ConversationState(
+    val active: Boolean = false,
+    val room: String = "",
+    val status: String = "",
+    val connected: Boolean = false,
+    // Imagen del otro, para pintarla en la pantalla (null = todavía no llega o se fue).
+    val remoteVideo: org.webrtc.VideoTrack? = null,
+    val remoteHasVideo: Boolean = true,
+    val remoteHasAudio: Boolean = true
+)
+
 /**
  * Singleton que coordina señalización + WebRTC. Tanto la Activity (para pintar la
  * UI) como el Service en primer plano (para mantenerlo vivo mientras la pantalla
@@ -63,6 +75,55 @@ object BroadcastEngine {
 
     private var webRtcClient: WebRtcClient? = null
     private var signalingClient: SignalingClient? = null
+
+    // --- Modo conversación ---------------------------------------------------------
+    val conversationState = MutableStateFlow(ConversationState())
+    private var conversationClient: ConversationClient? = null
+
+    /** Contexto gráfico del motor WebRTC, para pintar la imagen del otro. */
+    fun eglContext(): org.webrtc.EglBase.Context? = try { webRtcClient?.eglContext() } catch (e: Exception) { null }
+
+    /**
+     * Empieza a ver y oír DENTRO de la app la emisión de otra persona (su enlace),
+     * con el cancelador de eco activado para que no se forme acople. Solo con la
+     * emisión propia ya en marcha. Devuelve un mensaje de error, o null si arranca.
+     */
+    fun startConversation(linkText: String): String? {
+        val client = webRtcClient
+        if (!stateFlow.value.isRunning || client == null) return "Primero inicia tu transmisión."
+        val (server, room, password) = ConversationClient.parseLink(linkText)
+            ?: return "Eso no parece un enlace de QuickStream."
+        if (room == sessionRoom) return "Ese es tu propio enlace: pega el de la otra persona."
+        stopConversation()
+        client.setEchoCancellation(true)
+        lateinit var conv: ConversationClient
+        conv = ConversationClient(client, server, room, password, object : ConversationClient.Listener {
+            override fun onStatus(text: String, connected: Boolean) {
+                if (conversationClient !== conv) return
+                conversationState.value = conversationState.value.copy(status = text, connected = connected)
+            }
+            override fun onRemoteVideo(track: org.webrtc.VideoTrack?) {
+                if (conversationClient !== conv) return
+                conversationState.value = conversationState.value.copy(remoteVideo = track)
+            }
+            override fun onRemoteState(hasVideo: Boolean, hasAudio: Boolean) {
+                if (conversationClient !== conv) return
+                conversationState.value = conversationState.value.copy(remoteHasVideo = hasVideo, remoteHasAudio = hasAudio)
+            }
+        })
+        conversationClient = conv
+        conversationState.value = ConversationState(active = true, room = room, status = "Conectando…")
+        conv.start()
+        return null
+    }
+
+    fun stopConversation() {
+        val conv = conversationClient ?: return
+        conversationClient = null
+        conversationState.value = ConversationState()
+        conv.stop()
+        webRtcClient?.setEchoCancellation(false)
+    }
     // Se incrementa en cada start()/stop(): si una consulta TURN todavía en vuelo
     // (ver fetchTurnIceServers) responde tarde, comparando este número se sabe si
     // sigue hablando de LA MISMA emisión o si ya se paró/arrancó otra mientras
@@ -408,6 +469,8 @@ object BroadcastEngine {
             Log.w(TAG, "stopInternal con error: $errorMessage", Exception("stack trace informativo"))
         }
         mainHandler.removeCallbacksAndMessages(null)
+        // La conversación usa el mismo motor WebRTC: se cierra antes de liberarlo.
+        stopConversation()
         reconnectPending = false
         everLive = false
         hostToken = null

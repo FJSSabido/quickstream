@@ -234,6 +234,15 @@ class WebRtcClient(
             // la frecuencia que el móvil proponga por defecto, que en algunos
             // modelos es más baja y recorta los agudos.
             .setInputSampleRate(48000)
+            // Lo que se REPRODUCE (solo en el modo conversación: la voz del otro) sale
+            // por el altavoz como cualquier sonido multimedia, con el volumen normal
+            // del móvil, en vez de por el auricular de llamada.
+            .setAudioAttributes(
+                android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+            )
             .createAudioDeviceModule()
 
         val encoderFactory = DefaultVideoEncoderFactory(eglBase.eglBaseContext, true, true)
@@ -266,18 +275,71 @@ class WebRtcClient(
         // sonido "metálico". Sin ellas la voz llega tal cual la capta el micrófono.
         // Solo se mantiene el filtro de graves, que quita el runrún de fondo (golpes,
         // viento, zumbido eléctrico) sin tocar la voz.
-        val audioConstraints = MediaConstraints().apply {
-            mandatory.add(MediaConstraints.KeyValuePair("googEchoCancellation", "false"))
-            mandatory.add(MediaConstraints.KeyValuePair("googEchoCancellation2", "false"))
-            mandatory.add(MediaConstraints.KeyValuePair("googAutoGainControl", "false"))
-            mandatory.add(MediaConstraints.KeyValuePair("googAutoGainControl2", "false"))
-            mandatory.add(MediaConstraints.KeyValuePair("googNoiseSuppression", "false"))
-            mandatory.add(MediaConstraints.KeyValuePair("googNoiseSuppression2", "false"))
-            mandatory.add(MediaConstraints.KeyValuePair("googHighpassFilter", "true"))
-        }
-        audioSource = factory.createAudioSource(audioConstraints)
+        audioSource = factory.createAudioSource(audioConstraints(echoCancellation = false))
         localAudioTrack = factory.createAudioTrack("mic0", audioSource)
     }
+
+    private fun audioConstraints(echoCancellation: Boolean): MediaConstraints {
+        val ec = echoCancellation.toString()
+        return MediaConstraints().apply {
+            // Cancelación de eco y supresión de ruido solo en el modo conversación
+            // (ver setEchoCancellation): ahí el móvil reproduce la voz del otro por
+            // el altavoz y hay que restarla de lo que capta el micrófono para que
+            // no se forme el acople.
+            mandatory.add(MediaConstraints.KeyValuePair("googEchoCancellation", ec))
+            mandatory.add(MediaConstraints.KeyValuePair("googEchoCancellation2", ec))
+            mandatory.add(MediaConstraints.KeyValuePair("googAutoGainControl", "false"))
+            mandatory.add(MediaConstraints.KeyValuePair("googAutoGainControl2", "false"))
+            mandatory.add(MediaConstraints.KeyValuePair("googNoiseSuppression", ec))
+            mandatory.add(MediaConstraints.KeyValuePair("googNoiseSuppression2", ec))
+            mandatory.add(MediaConstraints.KeyValuePair("googHighpassFilter", "true"))
+        }
+    }
+
+    // --- Modo conversación ---------------------------------------------------------
+    // Sender de audio de cada espectador, para poder cambiar en caliente la pista
+    // del micrófono por otra con (o sin) cancelación de eco.
+    private val mainAudioSenders = mutableMapOf<String, RtpSender>()
+    private var echoCancellationOn = false
+
+    /**
+     * Activa o desactiva la cancelación de eco del micrófono SIN cortar la emisión:
+     * se crea una pista de micrófono nueva con el procesado pedido y se pone en el
+     * lugar de la anterior en cada espectador (igual que al cambiar de cámara).
+     * Solo funciona con lo que la propia app reproduce (la voz del otro en el modo
+     * conversación), porque es lo único que WebRTC sabe que está sonando.
+     */
+    fun setEchoCancellation(on: Boolean) {
+        if (on == echoCancellationOn || !::factory.isInitialized) return
+        echoCancellationOn = on
+        val enabled = localAudioTrack?.enabled() ?: true
+        val newSource = factory.createAudioSource(audioConstraints(echoCancellation = on))
+        val newTrack = factory.createAudioTrack(if (on) "mic-conversacion" else "mic0", newSource)
+        newTrack.setEnabled(enabled)
+        mainAudioSenders.values.forEach { sender ->
+            try { sender.setTrack(newTrack, false) } catch (e: Exception) { /* seguimos con el resto */ }
+        }
+        val oldTrack = localAudioTrack
+        val oldSource = audioSource
+        localAudioTrack = newTrack
+        audioSource = newSource
+        oldTrack?.dispose()
+        oldSource?.dispose()
+        Log.i(TAG, "Cancelación de eco ${if (on) "activada" else "desactivada"}")
+    }
+
+    fun eglContext(): EglBase.Context = eglBase.eglBaseContext
+
+    /** Conexión para RECIBIR la emisión de otro móvil (modo conversación). */
+    fun createReceiverPeerConnection(observer: PeerConnection.Observer): PeerConnection? {
+        val rtcConfig = PeerConnection.RTCConfiguration(iceServers).apply {
+            sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
+        }
+        return factory.createPeerConnection(rtcConfig, observer)
+    }
+
+    /** Pide al otro móvil su audio en alta calidad (mismos ajustes de Opus que al emitir). */
+    fun tuneOpusForReceiving(sdp: String): String = preferHighQualityOpus(sdp)
 
     /**
      * Elige la mejor (mayor) resolución que ofrece la cámara indicada, sin pasar de
@@ -542,7 +604,7 @@ class WebRtcClient(
         applyBitrateLimits(sender, currentCaptureWidth, currentCaptureHeight)
         preferHardwareCodec(pc, sender)
         mainVideoSenders[viewerId] = sender
-        localAudioTrack?.let { pc.addTrack(it, listOf("main")) }
+        localAudioTrack?.let { mainAudioSenders[viewerId] = pc.addTrack(it, listOf("main")) }
 
         peerConnections[viewerId] = pc
 
@@ -730,6 +792,7 @@ class WebRtcClient(
 
     fun closeViewer(viewerId: String) {
         mainVideoSenders.remove(viewerId)
+        mainAudioSenders.remove(viewerId)
         peerConnections.remove(viewerId)?.close()
     }
 
@@ -740,6 +803,7 @@ class WebRtcClient(
         peerConnections.values.forEach { it.close() }
         peerConnections.clear()
         mainVideoSenders.clear()
+        mainAudioSenders.clear()
         stopVideoCapture()
         placeholderTrack?.dispose()
         placeholderTrack = null
