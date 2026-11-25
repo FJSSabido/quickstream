@@ -259,19 +259,20 @@ class WebRtcClient(
 
         // Igual que arriba: se apaga también la cancelación de eco por software (no
         // hace nada útil sin audio que reproducir de vuelta, y de paso deja de
-        // "tocar" la señal sin necesidad). Se mantienen el control automático de
-        // ganancia (para que ni los susurros queden inaudibles ni los picos
-        // saturen — esto es justo lo que sube la SENSIBILIDAD a sonido flojo), la
-        // supresión de ruido y el filtro de graves (para seguir sin runrún de fondo,
-        // como se pidió antes). Las claves con "2" al final piden la versión más
-        // nueva de cada algoritmo cuando el dispositivo la soporta (AGC2/NS2).
+        // "tocar" la señal sin necesidad).
+        // Ganancia automática y supresión de ruido, APAGADAS: sobre la señal en crudo
+        // de VOICE_RECOGNITION, la ganancia automática subía y aplastaba el volumen
+        // (sonaba alto y saturado) y la supresión de ruido dejaba artefactos de
+        // sonido "metálico". Sin ellas la voz llega tal cual la capta el micrófono.
+        // Solo se mantiene el filtro de graves, que quita el runrún de fondo (golpes,
+        // viento, zumbido eléctrico) sin tocar la voz.
         val audioConstraints = MediaConstraints().apply {
             mandatory.add(MediaConstraints.KeyValuePair("googEchoCancellation", "false"))
             mandatory.add(MediaConstraints.KeyValuePair("googEchoCancellation2", "false"))
-            mandatory.add(MediaConstraints.KeyValuePair("googAutoGainControl", "true"))
-            mandatory.add(MediaConstraints.KeyValuePair("googAutoGainControl2", "true"))
-            mandatory.add(MediaConstraints.KeyValuePair("googNoiseSuppression", "true"))
-            mandatory.add(MediaConstraints.KeyValuePair("googNoiseSuppression2", "true"))
+            mandatory.add(MediaConstraints.KeyValuePair("googAutoGainControl", "false"))
+            mandatory.add(MediaConstraints.KeyValuePair("googAutoGainControl2", "false"))
+            mandatory.add(MediaConstraints.KeyValuePair("googNoiseSuppression", "false"))
+            mandatory.add(MediaConstraints.KeyValuePair("googNoiseSuppression2", "false"))
             mandatory.add(MediaConstraints.KeyValuePair("googHighpassFilter", "true"))
         }
         audioSource = factory.createAudioSource(audioConstraints)
