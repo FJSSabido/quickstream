@@ -149,6 +149,21 @@ class WebRtcClient(
 
     private var videoCapturer: VideoCapturer? = null
     private var displayListener: DisplayManager.DisplayListener? = null
+    // Corrige el giro de la imagen de la cámara según el sensor (ver CameraOrientationFixer).
+    private var orientationFixer: CameraOrientationFixer? = null
+    // Pista de vídeo vacía (sin cámara detrás) para negociar el canal de vídeo de
+    // quien se conecta mientras se emite solo con micrófono (ver createPeerConnectionForViewer).
+    private var placeholderSource: VideoSource? = null
+    private var placeholderTrack: VideoTrack? = null
+
+    private fun placeholderVideoTrack(): VideoTrack {
+        placeholderTrack?.let { return it }
+        val source = factory.createVideoSource(false)
+        val track = factory.createVideoTrack("video-reserva", source)
+        placeholderSource = source
+        placeholderTrack = track
+        return track
+    }
     private var videoSource: VideoSource? = null
     private var surfaceTextureHelper: SurfaceTextureHelper? = null
     private var localVideoTrack: VideoTrack? = null
@@ -303,6 +318,13 @@ class WebRtcClient(
         val source = factory.createVideoSource(false)
         videoSource = source
 
+        // La app está fijada en vertical: sin esto, al girar el móvil quien mira
+        // veía la imagen tumbada. Así cada fotograma lleva el giro real del móvil.
+        val fixer = CameraOrientationFixer(context, enumerator.isFrontFacing(deviceName))
+        source.setVideoProcessor(fixer)
+        fixer.start()
+        orientationFixer = fixer
+
         val helper = SurfaceTextureHelper.create("CaptureThread", eglBase.eglBaseContext)
         surfaceTextureHelper = helper
 
@@ -454,6 +476,8 @@ class WebRtcClient(
 
     private fun stopVideoCapture() {
         unwatchScreenRotation()
+        orientationFixer?.stop()
+        orientationFixer = null
         try { videoCapturer?.stopCapture() } catch (e: Exception) { /* ignorar */ }
         videoCapturer?.dispose()
         videoCapturer = null
@@ -505,13 +529,18 @@ class WebRtcClient(
             override fun onAddTrack(p0: RtpReceiver?, p1: Array<out MediaStream>?) {}
         }) ?: return
 
-        val sender = localVideoTrack?.let { track ->
-            val s = pc.addTrack(track, listOf("main"))
-            applyBitrateLimits(s, currentCaptureWidth, currentCaptureHeight)
-            preferHardwareCodec(pc, s)
-            s
-        }
-        if (sender != null) mainVideoSenders[viewerId] = sender
+        // El canal de vídeo se abre SIEMPRE, aunque ahora mismo no haya cámara ni
+        // pantalla (emisión que empieza solo con micrófono): así, al encender una
+        // cámara después, la imagen entra por este canal ya negociado con
+        // setTrack (ver pushVideoTrackToExistingSenders).
+        // Sin cámara se negocia con una pista "de reserva" que no manda nada: si el
+        // canal se negociaba SIN pista, en el móvil la imagen no llegaba a salir al
+        // encender la cámara después (quien ya miraba se quedaba en negro), mientras
+        // que el cambio de una pista a otra sí funciona siempre.
+        val sender: RtpSender = pc.addTrack(localVideoTrack ?: placeholderVideoTrack(), listOf("main"))
+        applyBitrateLimits(sender, currentCaptureWidth, currentCaptureHeight)
+        preferHardwareCodec(pc, sender)
+        mainVideoSenders[viewerId] = sender
         localAudioTrack?.let { pc.addTrack(it, listOf("main")) }
 
         peerConnections[viewerId] = pc
@@ -711,6 +740,10 @@ class WebRtcClient(
         peerConnections.clear()
         mainVideoSenders.clear()
         stopVideoCapture()
+        placeholderTrack?.dispose()
+        placeholderTrack = null
+        placeholderSource?.dispose()
+        placeholderSource = null
         audioSource?.dispose()
         audioSource = null
         localAudioTrack?.dispose()
