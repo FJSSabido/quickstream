@@ -511,12 +511,16 @@
   // Este control (botón + regla de volumen) es independiente de esa política
   // inicial: deja silenciar/graduar el sonido en cualquier momento.
   let lastVolume = 1;
+  // true si quien mira ha silenciado a propósito con el botón 🔊: entonces no se
+  // le vuelve a activar el sonido solo al cambiar de cámara o reconectar.
+  let userMuted = false;
 
   function updateMuteIcon() {
     muteBtn.textContent = (videoEl.muted || videoEl.volume === 0) ? '🔇' : '🔊';
   }
 
   function unmuteTo(vol) {
+    userMuted = false;
     videoEl.muted = false;
     videoEl.volume = vol;
     volumeSlider.value = Math.round(vol * 100);
@@ -532,6 +536,7 @@
     } else {
       lastVolume = videoEl.volume;
       videoEl.muted = true;
+      userMuted = true;
       updateMuteIcon();
     }
   });
@@ -1020,7 +1025,16 @@
         updateSignalBadges();
       }
       layoutVideo();
-      videoEl.play().catch(() => {
+      startPlayback();
+    }
+
+    // Se intenta reproducir CON sonido. Si el navegador no lo permite sin un toque
+    // (lo normal al abrir el enlace), se reproduce en silencio y se pide el toque
+    // con el botón «Reproducir». Antes solo se pedía si fallaba la reproducción
+    // en silencio, y al emitir solo con micrófono eso ya no fallaba: el sonido
+    // quedaba silenciado sin que nada avisara.
+    function startPlayback() {
+      const askForGesture = () => {
         needsPlayGesture = true;
         showOverlay('<p>Toca para activar el sonido y reproducir</p><button class="btn" id="playBtn">Reproducir</button>');
         document.getElementById('playBtn').onclick = () => {
@@ -1028,6 +1042,17 @@
           unmuteTo(lastVolume > 0 ? lastVolume : 1);
           hideOverlay();
         };
+      };
+      if (userMuted) {
+        videoEl.play().catch(askForGesture);
+        return;
+      }
+      videoEl.muted = false;
+      videoEl.play().then(updateMuteIcon).catch(() => {
+        videoEl.muted = true;
+        updateMuteIcon();
+        videoEl.play().catch(() => {});
+        askForGesture();
       });
     }
 
