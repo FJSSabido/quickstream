@@ -684,6 +684,10 @@ class MainActivity : AppCompatActivity() {
                         // (señalización confirmada) — antes de eso no hay a quién mandarle nada.
                         if (!chatLive) {
                             chatLive = true
+                            // El chat empieza plegado en su burbuja 💬: así no tapa los
+                            // botones (Detener incluido). Avisa de mensajes nuevos con el
+                            // contador y se abre con un toque.
+                            chatHidden = true
                             updateChatVisibility()
                             // Al entrar en directo lo primero que hace falta es el enlace/QR
                             // para compartirlo: lo traemos a la vista, por encima del chat.
