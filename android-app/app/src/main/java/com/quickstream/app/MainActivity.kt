@@ -133,6 +133,11 @@ class MainActivity : AppCompatActivity() {
 
         binding.btnConversation.setOnClickListener { showConversationDialog() }
         binding.btnEndConversation.setOnClickListener { BroadcastEngine.stopConversation() }
+        binding.btnRemoteMute.setOnClickListener {
+            BroadcastEngine.setConversationMuted(!BroadcastEngine.conversationState.value.remoteMuted)
+        }
+        binding.btnRemoteFullscreen.setOnClickListener { setConversationFullscreen(!conversationFullscreen) }
+        onBackPressedDispatcher.addCallback(this, fullscreenBackCallback)
 
         binding.btnChatHide.setOnClickListener { setChatHidden(true) }
         binding.btnChatShow.setOnClickListener { setChatHidden(false) }
@@ -162,6 +167,55 @@ class MainActivity : AppCompatActivity() {
 
     private var rendererReady = false
     private var attachedTrack: org.webrtc.VideoTrack? = null
+    private var conversationFullscreen = false
+    // Con la imagen maximizada, «atrás» la devuelve a su sitio en vez de salir.
+    private val fullscreenBackCallback = object : androidx.activity.OnBackPressedCallback(false) {
+        override fun handleOnBackPressed() = setConversationFullscreen(false)
+    }
+
+    /**
+     * Maximiza la imagen de la otra persona: la misma caja (imagen + botones) pasa de
+     * la tarjeta a una capa que cubre toda la app, sin barras del sistema. Se mueve en
+     * vez de duplicarse para que siga habiendo un único sitio donde se pinta.
+     */
+    private fun setConversationFullscreen(on: Boolean) {
+        if (on == conversationFullscreen) return
+        conversationFullscreen = on
+        fullscreenBackCallback.isEnabled = on
+        val frame = binding.remoteVideoFrame
+        val bars = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+        val density = resources.displayMetrics.density
+        (frame.parent as? android.view.ViewGroup)?.removeView(frame)
+        if (on) {
+            binding.conversationFullscreen.addView(
+                frame,
+                android.widget.FrameLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            )
+            binding.conversationFullscreen.visibility = android.view.View.VISIBLE
+            bars.systemBarsBehavior =
+                androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            bars.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            binding.btnRemoteFullscreen.text = "✕"
+            binding.btnRemoteFullscreen.contentDescription = "Salir de pantalla completa"
+        } else {
+            binding.conversationFullscreen.visibility = android.view.View.GONE
+            // Vuelve a su sitio en la tarjeta: debajo del estado, encima de «Terminar».
+            binding.cardConversation.addView(
+                frame,
+                binding.cardConversation.indexOfChild(binding.btnEndConversation),
+                android.widget.LinearLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    (300 * density).toInt()
+                ).apply { topMargin = (10 * density).toInt() }
+            )
+            bars.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            binding.btnRemoteFullscreen.text = "⛶"
+            binding.btnRemoteFullscreen.contentDescription = "Ver a pantalla completa"
+        }
+    }
 
     /** Cuadro propio (dialog_conversation.xml) con la paleta y la letra de la app. */
     private fun showConversationDialog() {
@@ -212,6 +266,7 @@ class MainActivity : AppCompatActivity() {
         binding.txtConversationStatus.text = conv.status
 
         if (!conv.active) {
+            setConversationFullscreen(false)
             detachRemoteVideo()
             if (rendererReady) {
                 binding.remoteRenderer.release()
@@ -236,6 +291,9 @@ class MainActivity : AppCompatActivity() {
                 try { it.addSink(binding.remoteRenderer); attachedTrack = it } catch (e: Exception) { /* pista ya liberada */ }
             }
         }
+        binding.btnRemoteMute.text = if (conv.remoteMuted) "🔇" else "🔊"
+        binding.btnRemoteMute.contentDescription =
+            if (conv.remoteMuted) "Volver a oír a la otra persona" else "Silenciar a la otra persona"
         val showImage = attachedTrack != null && conv.remoteHasVideo
         binding.txtRemoteAudioOnly.visibility = if (showImage) android.view.View.GONE else android.view.View.VISIBLE
         binding.txtRemoteAudioOnly.text = when {

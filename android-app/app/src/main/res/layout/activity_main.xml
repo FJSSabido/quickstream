@@ -319,7 +319,10 @@
                 android:textColor="@color/text_secondary"
                 android:textSize="12sp" />
 
+            <!-- Imagen de la otra persona. Al maximizarla, esta misma caja se pasa a
+                 conversationFullscreen (ver MainActivity.setConversationFullscreen). -->
             <FrameLayout
+                android:id="@+id/remoteVideoFrame"
                 android:layout_width="match_parent"
                 android:layout_height="300dp"
                 android:layout_marginTop="10dp"
@@ -343,6 +346,36 @@
                     android:textColor="@color/state_on"
                     android:textSize="18sp"
                     android:textStyle="italic" />
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="top|end"
+                    android:layout_margin="10dp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/btnRemoteMute"
+                        android:layout_width="44dp"
+                        android:layout_height="44dp"
+                        android:background="@drawable/bg_video_button"
+                        android:contentDescription="Silenciar a la otra persona"
+                        android:gravity="center"
+                        android:text="🔊"
+                        android:textSize="19sp" />
+
+                    <TextView
+                        android:id="@+id/btnRemoteFullscreen"
+                        android:layout_width="44dp"
+                        android:layout_height="44dp"
+                        android:layout_marginStart="10dp"
+                        android:background="@drawable/bg_video_button"
+                        android:contentDescription="Ver a pantalla completa"
+                        android:gravity="center"
+                        android:text="⛶"
+                        android:textColor="@color/text_primary"
+                        android:textSize="22sp" />
+                </LinearLayout>
             </FrameLayout>
 
             <TextView
@@ -635,6 +668,17 @@
             android:textStyle="bold"
             android:visibility="gone" />
     </FrameLayout>
+
+    <!-- Pantalla completa de la conversación: vacía y oculta hasta que se maximiza. -->
+    <FrameLayout
+        android:id="@+id/conversationFullscreen"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/bg"
+        android:clickable="true"
+        android:elevation="40dp"
+        android:focusable="true"
+        android:visibility="gone" />
 
 </FrameLayout>
 

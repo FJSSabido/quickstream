@@ -56,6 +56,15 @@ class ConversationClient(
     // añaden en cuanto la conexión está lista para ellos.
     private val pendingCandidates = mutableListOf<IceCandidate>()
     private var remoteDescriptionSet = false
+    // Voz de la otra persona, para poder silenciarla sin cortar la conversación.
+    private var remoteAudio: org.webrtc.AudioTrack? = null
+    private var muted = false
+
+    /** Silencia (o vuelve a oír) a la otra persona; ella sigue oyéndote a ti. */
+    fun setMuted(value: Boolean) {
+        muted = value
+        try { remoteAudio?.setEnabled(!value) } catch (e: Exception) { /* pista ya liberada */ }
+    }
 
     private val pingRunnable = object : Runnable {
         override fun run() {
@@ -63,6 +72,21 @@ class ConversationClient(
             try { ws?.takeIf { it.isOpen }?.send("{\"type\":\"ping\"}") } catch (e: Exception) { /* ignorar */ }
             mainHandler.postDelayed(this, 25000)
         }
+    }
+
+    // Si la conexión con el otro móvil falla, antes solo se avisaba de que se
+    // reintentaba, pero nadie lo hacía y se quedaba así para siempre. Ahora se
+    // vuelve a entrar en su sala: al volver a entrar, su móvil manda una oferta
+    // nueva y la conexión se negocia otra vez desde cero.
+    private val restartRunnable = Runnable { restartSession() }
+
+    private fun restartSession() {
+        if (stopped) return
+        closePeer()
+        val old = ws
+        ws = null // así su onClose no programa otra reconexión
+        try { old?.close() } catch (e: Exception) { /* ignorar */ }
+        scheduleReconnect()
     }
 
     fun start() {
@@ -157,16 +181,22 @@ class ConversationClient(
     }
 
     private fun closePeer() {
+        mainHandler.removeCallbacks(restartRunnable)
         // Primero se avisa (la pantalla suelta la imagen) y luego se libera la conexión.
         listener.onRemoteVideo(null)
+        remoteAudio = null
         pc?.dispose()
         pc = null
         remoteDescriptionSet = false
         pendingCandidates.clear()
     }
 
+    // Cuenta las conexiones: los avisos de una conexión ya sustituida se ignoran.
+    private var peerGeneration = 0
+
     private fun handleOffer(sdp: String) {
         closePeer()
+        val myGeneration = ++peerGeneration
         val peer = rtc.createReceiverPeerConnection(object : PeerConnection.Observer {
             override fun onIceCandidate(candidate: IceCandidate) {
                 mainHandler.post {
@@ -189,15 +219,35 @@ class ConversationClient(
                 }
                 // El audio no necesita nada más: el motor de audio de la app lo
                 // reproduce solo, y por eso su cancelador de eco sabe que suena.
+                // Solo se guarda para poder silenciarlo.
+                if (track.kind() == MediaStreamTrack.AUDIO_TRACK_KIND) {
+                    mainHandler.post {
+                        if (pc == null) return@post
+                        remoteAudio = track as org.webrtc.AudioTrack
+                        setMuted(muted)
+                    }
+                }
             }
             override fun onConnectionChange(newState: PeerConnection.PeerConnectionState) {
                 mainHandler.post {
+                    if (stopped || myGeneration != peerGeneration || pc == null) return@post
                     when (newState) {
-                        PeerConnection.PeerConnectionState.CONNECTED ->
+                        PeerConnection.PeerConnectionState.CONNECTED -> {
+                            mainHandler.removeCallbacks(restartRunnable)
                             listener.onStatus("En conversación con la sala $room", true)
-                        PeerConnection.PeerConnectionState.DISCONNECTED,
-                        PeerConnection.PeerConnectionState.FAILED ->
+                        }
+                        // Un corte breve suele arreglarse solo; si en unos segundos no
+                        // vuelve, se empieza de cero.
+                        PeerConnection.PeerConnectionState.DISCONNECTED -> {
                             listener.onStatus("Se ha perdido la conexión, reintentando…", false)
+                            mainHandler.removeCallbacks(restartRunnable)
+                            mainHandler.postDelayed(restartRunnable, 6000)
+                        }
+                        PeerConnection.PeerConnectionState.FAILED -> {
+                            listener.onStatus("Se ha perdido la conexión, reintentando…", false)
+                            mainHandler.removeCallbacks(restartRunnable)
+                            restartSession()
+                        }
                         else -> {}
                     }
                 }

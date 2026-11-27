@@ -54,7 +54,9 @@ data class ConversationState(
     // Imagen del otro, para pintarla en la pantalla (null = todavía no llega o se fue).
     val remoteVideo: org.webrtc.VideoTrack? = null,
     val remoteHasVideo: Boolean = true,
-    val remoteHasAudio: Boolean = true
+    val remoteHasAudio: Boolean = true,
+    /** La has silenciado tú (botón 🔇 sobre su imagen). */
+    val remoteMuted: Boolean = false
 )
 
 /**
@@ -115,6 +117,12 @@ object BroadcastEngine {
         conversationState.value = ConversationState(active = true, room = room, status = "Conectando…")
         conv.start()
         return null
+    }
+
+    fun setConversationMuted(muted: Boolean) {
+        val conv = conversationClient ?: return
+        conv.setMuted(muted)
+        conversationState.value = conversationState.value.copy(remoteMuted = muted)
     }
 
     fun stopConversation() {
